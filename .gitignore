@@ -1,0 +1,6 @@
+.env
+.env.local
+*.sqlite3-journal
+__pycache__/
+*.pyc
+

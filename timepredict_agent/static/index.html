@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TimePredict Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">T</div>
+          <div>
+            <h1>TimePredict Agent</h1>
+            <p>时间序列论文管理台</p>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-item active" type="button" data-nav="library">
+            <span class="nav-icon" aria-hidden="true">▦</span>
+            论文库
+          </button>
+          <button class="nav-item" type="button" data-nav="report">
+            <span class="nav-icon" aria-hidden="true">⌁</span>
+            阅读报告
+          </button>
+          <button class="nav-item" type="button" data-nav="settings">
+            <span class="nav-icon" aria-hidden="true">⚙</span>
+            配置
+          </button>
+        </nav>
+
+        <div class="side-section">
+          <p class="side-label">本地状态</p>
+          <dl class="status-list">
+            <div>
+              <dt>数据库</dt>
+              <dd id="databasePath">加载中</dd>
+            </div>
+            <div>
+              <dt>默认范围</dt>
+              <dd id="defaultRange">加载中</dd>
+            </div>
+            <div>
+              <dt>LLM</dt>
+              <dd id="llmStatus">加载中</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="side-section">
+          <p class="side-label">快速筛选</p>
+          <div class="quick-filters">
+            <button data-keyword="predictive process monitoring" type="button">预测监控</button>
+            <button data-keyword="remaining time prediction" type="button">剩余时间预测</button>
+            <button data-keyword="business process remaining time prediction" type="button">业务剩余时间</button>
+            <button data-keyword="event sequence prediction" type="button">事件序列预测</button>
+            <button data-keyword="next event prediction" type="button">下一事件预测</button>
+            <button data-keyword="next activity prediction" type="button">下一活动预测</button>
+            <button data-keyword="event log prediction" type="button">事件日志预测</button>
+            <button data-keyword="process mining" type="button">流程挖掘</button>
+            <button data-keyword="incremental event log" type="button">增量事件日志</button>
+            <button data-keyword="transformer" type="button">Transformer</button>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <p class="side-label">论文来源</p>
+          <div class="source-toggles">
+            <label><input type="checkbox" name="source" value="arxiv" checked /> arXiv</label>
+            <label><input type="checkbox" name="source" value="semantic_scholar" checked /> Semantic Scholar</label>
+            <label><input type="checkbox" name="source" value="openalex" checked /> OpenAlex</label>
+            <label><input type="checkbox" name="source" value="ieee_xplore" checked /> IEEE Xplore</label>
+            <label><input type="checkbox" name="source" value="google_scholar" /> Google Scholar HTML</label>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="toolbar">
+          <div class="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索标题、摘要、方法标签" />
+          </div>
+          <label class="number-field">
+            数量
+            <input id="maxResults" type="number" min="1" max="200" value="80" />
+          </label>
+          <label class="number-field">
+            天数
+            <input id="recentDays" type="number" min="1" max="3650" value="1095" />
+          </label>
+          <button id="addPaperButton" class="secondary-button" type="button">
+            <span aria-hidden="true">＋</span>
+            添加已读
+          </button>
+          <button id="collectButton" class="primary-button" type="button">
+            <span aria-hidden="true">↻</span>
+            多源收集
+          </button>
+          <button id="exportButton" class="secondary-button" type="button">
+            <span aria-hidden="true">⇩</span>
+            导出报告
+          </button>
+        </header>
+
+        <section class="metrics" aria-label="论文统计">
+          <div>
+            <span id="paperCount">0</span>
+            <p>已收集论文</p>
+          </div>
+          <div>
+            <span id="highCount">0</span>
+            <p>高优先级</p>
+          </div>
+          <div>
+            <span id="methodCount">0</span>
+            <p>方法标签</p>
+          </div>
+          <div>
+            <span id="latestDate">--</span>
+            <p>最新日期</p>
+          </div>
+        </section>
+
+        <div id="message" class="message" hidden></div>
+
+        <section class="content-grid">
+          <div class="paper-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>论文列表</h2>
+                <p>按发布时间倒序排列</p>
+              </div>
+              <button id="refreshButton" class="icon-button" type="button" title="刷新列表">↺</button>
+            </div>
+            <div id="paperList" class="paper-list" aria-live="polite"></div>
+          </div>
+
+          <aside class="detail-panel">
+            <div id="paperDetail" class="paper-detail empty">
+              <p class="empty-title">选择一篇论文</p>
+              <p>左侧列表会展示收集到的论文，点击后可以查看中文摘要、关键要点、相关性判断和 PDF 链接。</p>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

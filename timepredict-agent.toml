@@ -1,0 +1,32 @@
+[agent]
+database_path = "data/papers.sqlite3"
+report_dir = "reports"
+pdf_dir = "data/pdfs"
+max_results = 80
+recent_days = 1095
+sources = ["arxiv", "semantic_scholar", "openalex", "ieee_xplore"]
+query = '(((all:time AND all:series) AND (all:forecasting OR all:prediction OR all:forecast)) OR (all:predictive AND all:process AND all:monitoring) OR (all:remaining AND all:time AND all:prediction) OR (all:process AND all:mining) OR (all:incremental AND all:event AND all:log)) AND (cat:cs.LG OR cat:stat.ML OR cat:cs.AI OR cat:cs.DB OR cat:cs.SE)'
+keywords = [
+  "time series",
+  "forecasting",
+  "prediction",
+  "temporal",
+  "multivariate",
+  "long-term",
+  "predictive process monitoring",
+  "event sequence",
+  "event sequence prediction",
+  "next event prediction",
+  "next activity prediction",
+  "remaining time",
+  "remaining time prediction",
+  "business process remaining time prediction",
+  "process mining",
+  "event log",
+  "event log prediction",
+  "incremental event log",
+  "transformer",
+  "business process",
+  "incremental learning",
+  "concept drift",
+]
