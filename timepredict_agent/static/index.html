@@ -166,12 +166,16 @@
                 <h2 id="listTitle">论文列表</h2>
                 <p id="listSubtitle">按发布时间倒序排列</p>
               </div>
-              <button id="refreshButton" class="icon-button" type="button" title="刷新列表">↺</button>
+              <div class="panel-heading-actions">
+                <button id="expertPaperPanelToggle" class="paper-panel-toggle" type="button" title="收起咨询论文" hidden>收起</button>
+                <button id="refreshButton" class="icon-button" type="button" title="刷新列表">↺</button>
+              </div>
             </div>
             <div id="paperList" class="paper-list" aria-live="polite"></div>
           </div>
 
           <aside class="detail-panel">
+            <button id="expertPaperRail" class="expert-paper-rail" type="button" title="展开咨询论文" hidden>展开咨询论文</button>
             <div id="paperDetail" class="paper-detail empty">
               <p class="empty-title">选择一篇论文</p>
               <p>左侧列表会展示收集到的论文，点击后可以查看中文摘要、关键要点、相关性判断和 PDF 链接。</p>

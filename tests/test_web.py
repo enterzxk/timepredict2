@@ -133,6 +133,9 @@ class WebSerializationTest(unittest.TestCase):
 
         for contract in [
             "expertPapersCollapsed",
+            "expertPaperPanelToggle",
+            "expertPaperRail",
+            "toggleExpertPaperPanel",
             "data-expert-toggle-papers",
             "expert-collapsed",
             "expert-chat-stage",
@@ -146,6 +149,8 @@ class WebSerializationTest(unittest.TestCase):
         for contract in [
             ".content-grid.expert-view",
             ".content-grid.expert-collapsed",
+            ".panel-heading-actions",
+            ".expert-paper-rail",
             ".expert-chat-stage",
             ".expert-askbar",
             ".expert-quick-actions",

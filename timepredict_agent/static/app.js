@@ -29,6 +29,8 @@ const el = {
   collectButton: document.querySelector("#collectButton"),
   exportButton: document.querySelector("#exportButton"),
   refreshButton: document.querySelector("#refreshButton"),
+  expertPaperPanelToggle: document.querySelector("#expertPaperPanelToggle"),
+  expertPaperRail: document.querySelector("#expertPaperRail"),
   paperList: document.querySelector("#paperList"),
   paperDetail: document.querySelector("#paperDetail"),
   message: document.querySelector("#message"),
@@ -148,6 +150,8 @@ function bindEvents() {
   el.uploadPaperButton.addEventListener("click", openUploadPanel);
   el.collectButton.addEventListener("click", collectPapers);
   el.exportButton.addEventListener("click", exportReport);
+  el.expertPaperPanelToggle?.addEventListener("click", toggleExpertPaperPanel);
+  el.expertPaperRail?.addEventListener("click", toggleExpertPaperPanel);
   el.searchInput.addEventListener("input", debounce(() => {
     state.keyword = el.searchInput.value.trim();
     state.activeView = "library";
@@ -328,6 +332,14 @@ function renderViewChrome() {
   el.contentGrid.classList.toggle("wide-detail", ["triage", "discovery", "expert"].includes(state.activeView));
   el.contentGrid.classList.toggle("expert-view", isExpertView);
   el.contentGrid.classList.toggle("expert-collapsed", isExpertView && state.expertPapersCollapsed);
+  if (el.expertPaperPanelToggle) {
+    el.expertPaperPanelToggle.hidden = !isExpertView;
+    el.expertPaperPanelToggle.textContent = state.expertPapersCollapsed ? "展开" : "收起";
+    el.expertPaperPanelToggle.title = state.expertPapersCollapsed ? "展开咨询论文" : "收起咨询论文";
+  }
+  if (el.expertPaperRail) {
+    el.expertPaperRail.hidden = !(isExpertView && state.expertPapersCollapsed);
+  }
 }
 
 function renderStats() {
@@ -1308,6 +1320,11 @@ function openExpertForSelectedPaper() {
   if (el.paperDetail) el.paperDetail.scrollTop = 0;
 }
 
+function toggleExpertPaperPanel() {
+  state.expertPapersCollapsed = !state.expertPapersCollapsed;
+  render();
+}
+
 function renderExpertChat(paper) {
   const chats = paper.expertChat || [];
   return `
@@ -1335,10 +1352,7 @@ function renderExpertChat(paper) {
 
 function bindExpertChatEvents(paper) {
   el.paperDetail.querySelectorAll("[data-expert-toggle-papers]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.expertPapersCollapsed = !state.expertPapersCollapsed;
-      render();
-    });
+    button.addEventListener("click", toggleExpertPaperPanel);
   });
   if (!paper) return;
   el.paperDetail.querySelectorAll("[data-expert-form]").forEach((form) => {
