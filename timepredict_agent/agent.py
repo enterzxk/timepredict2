@@ -202,6 +202,7 @@ class PaperAgent:
         github_limit: int = 5,
         prefer_llm: bool = True,
         history: list[dict] | None = None,
+        session_id: str | None = None,
     ) -> dict:
         row = self.store.find_paper(paper_id)
         if row is None:
@@ -210,23 +211,54 @@ class PaperAgent:
         summary = decode_summary(row)
         pdf_text = self._pdf_text_for_row(row, max_chars=30000)
 
-        repositories = []
-        github_error = ""
-        if include_github or _question_needs_github(question):
-            repositories = self.github.search(paper, summary, question, github_limit)
-            github_error = self.github.last_error
+        session = self._ensure_agent_session(row, question, session_id)
+        intent = _agent_question_intent(question, include_github)
+        memory_used = _memory_for_question(self.store.list_agent_memory(limit=12), question)
+        plan = _build_agent_plan(question, intent, include_github, bool(pdf_text))
+        task_run = self.store.create_agent_task_run(session["id"], paper_id, plan)
+        tool_calls, repositories, github_error = self._execute_agent_plan(
+            row=row,
+            paper=paper,
+            summary=summary,
+            pdf_text=pdf_text,
+            question=question,
+            plan=plan,
+            github_limit=github_limit,
+        )
+        _mark_plan_from_tool_calls(plan, tool_calls)
 
         used_llm = False
         llm_error = ""
+        merged_history = _merge_agent_history(history or [], self.store.list_agent_turns(session["id"]))
         if prefer_llm and self.llm.available():
             try:
-                answer = self.llm.answer_paper_question(paper, summary, pdf_text, question, repositories, history or [])
+                answer = self.llm.answer_paper_question(paper, summary, pdf_text, question, repositories, merged_history)
                 used_llm = True
             except RuntimeError as exc:
                 llm_error = str(exc)
                 answer = _local_expert_answer(row, summary, question, repositories, pdf_text)
         else:
             answer = _local_expert_answer(row, summary, question, repositories, pdf_text)
+
+        reflection = _reflect_expert_answer(question, answer, summary, pdf_text, intent, tool_calls)
+        if not reflection["passed"]:
+            answer = _repair_answer_from_reflection(answer, reflection)
+        _finalize_agent_tool_calls(tool_calls, reflection)
+        _mark_plan_from_tool_calls(plan, tool_calls)
+
+        turn = self.store.add_agent_turn(
+            session_id=session["id"],
+            paper_id=paper_id,
+            question=question,
+            answer=answer,
+            plan=plan,
+            tool_calls=tool_calls,
+            reflection=reflection,
+            memory_used=memory_used,
+        )
+        title = _agent_session_title(row, question)
+        self.store.touch_agent_session(session["id"], title if session.get("turn_count", 0) == 0 else None)
+        self.store.update_agent_task_run(task_run["id"], "completed", plan, turn["id"])
 
         return {
             "paper_id": paper_id,
@@ -236,7 +268,139 @@ class PaperAgent:
             "llm_error": llm_error,
             "github_error": github_error,
             "github_repositories": repositories,
+            "session_id": session["id"],
+            "turn_id": turn["id"],
+            "plan": plan,
+            "tool_calls": tool_calls,
+            "reflection": reflection,
+            "memory_used": memory_used,
+            "task_run": {"id": task_run["id"], "status": "completed", "steps": plan},
+            "agent_roles": ["Planner Agent", "Reader Agent", "Code Agent", "Critic Agent", "Tutor Agent"],
         }
+
+    def list_agent_sessions(self, paper_id: str | None = None, limit: int = 60) -> list[dict]:
+        return self.store.list_agent_sessions(paper_id=paper_id, limit=limit)
+
+    def create_agent_session(self, paper_id: str, title: str = "") -> dict:
+        row = self.store.find_paper(paper_id)
+        if row is None:
+            raise ValueError(f"Paper not found: {paper_id}")
+        return self.store.create_agent_session(paper_id, title or _agent_session_title(row, ""))
+
+    def add_agent_feedback(
+        self,
+        turn_id: str,
+        session_id: str,
+        rating: str,
+        category: str = "",
+        note: str = "",
+    ) -> dict:
+        return self.store.add_agent_feedback(turn_id, session_id, rating, category, note)
+
+    def _ensure_agent_session(self, row, question: str, session_id: str | None) -> dict:
+        if session_id:
+            session = self.store.find_agent_session(session_id)
+            if session is not None:
+                return session
+        return self.store.create_agent_session(row["arxiv_id"], _agent_session_title(row, question))
+
+    def _execute_agent_plan(
+        self,
+        row,
+        paper,
+        summary,
+        pdf_text: str,
+        question: str,
+        plan: list[dict],
+        github_limit: int,
+    ) -> tuple[list[dict], list[dict], str]:
+        tool_calls: list[dict] = []
+        repositories: list[dict] = []
+        github_error = ""
+        for step in plan:
+            step_type = step["type"]
+            if step_type == "read_context":
+                tool_calls.append(
+                    {
+                        "tool": "read_context",
+                        "role": "Reader Agent",
+                        "status": "completed",
+                        "summary": _context_tool_summary(row, summary),
+                    }
+                )
+            elif step_type == "read_fulltext":
+                tool_calls.append(
+                    {
+                        "tool": "read_fulltext",
+                        "role": "Reader Agent",
+                        "status": "completed" if pdf_text else "missing",
+                        "summary": "已读取 PDF/全文片段。" if pdf_text else "当前没有可用 PDF 全文或全文片段。",
+                    }
+                )
+            elif step_type == "search_github":
+                repositories = self.github.search(paper, summary, question, github_limit)
+                github_error = self.github.last_error
+                tool_calls.append(
+                    {
+                        "tool": "search_github",
+                        "role": "Code Agent",
+                        "status": "completed" if repositories else "empty",
+                        "summary": f"找到 {len(repositories)} 个 GitHub 候选仓库。",
+                    }
+                )
+            elif step_type == "analyze_citations":
+                citations = decode_json_object(row, "citations_json", [])
+                references = decode_json_object(row, "references_json", [])
+                tool_calls.append(
+                    {
+                        "tool": "analyze_citations",
+                        "role": "Reader Agent",
+                        "status": "completed" if citations or references else "missing",
+                        "summary": f"引用 {row['citation_count'] or 0}，本地缓存引用条目 {len(citations)}，参考文献条目 {len(references)}。",
+                    }
+                )
+            elif step_type == "find_related":
+                related = decode_json_object(row, "related_json", [])
+                if not related:
+                    related = [item.__dict__ for item in self._local_recommendations(row, 8)]
+                    if related:
+                        self.store.update_related_papers(row["arxiv_id"], related)
+                tool_calls.append(
+                    {
+                        "tool": "find_related",
+                        "role": "Reader Agent",
+                        "status": "completed" if related else "empty",
+                        "summary": f"本地相似论文 {len(related)} 条。",
+                    }
+                )
+            elif step_type == "compare_methods":
+                tool_calls.append(
+                    {
+                        "tool": "compare_methods",
+                        "role": "Tutor Agent",
+                        "status": "completed",
+                        "summary": _comparison_tool_summary(summary),
+                    }
+                )
+            elif step_type == "reflect":
+                tool_calls.append(
+                    {
+                        "tool": "reflect",
+                        "role": "Critic Agent",
+                        "status": "pending",
+                        "summary": "回答生成后检查是否覆盖问题、方法、实验和证据。",
+                    }
+                )
+            elif step_type == "synthesize":
+                tool_calls.append(
+                    {
+                        "tool": "synthesize",
+                        "role": "Tutor Agent",
+                        "status": "pending",
+                        "summary": "综合为面向学生的中文解释。",
+                    }
+                )
+        return tool_calls, repositories, github_error
 
     def daily_recommendations(
         self,
@@ -412,8 +576,8 @@ class PaperAgent:
                 missing.append(paper_id)
             else:
                 rows.append(row)
-        if len(rows) < 2:
-            raise ValueError("请至少选择 2 篇已收录论文来生成综述。")
+        if len(rows) < 1:
+            raise ValueError("请至少选择 1 篇已收录论文来生成综述。")
 
         briefs = [_review_brief(row, index) for index, row in enumerate(rows, 1)]
         used_llm = False
@@ -891,6 +1055,321 @@ def _local_innovation_advice(row, related: list[dict], related_rows: list) -> li
         }
     )
     return suggestions[:5]
+
+
+def _agent_question_intent(question: str, include_github: bool = False) -> dict[str, bool]:
+    text = str(question or "").lower()
+    concept = any(
+        keyword in text
+        for keyword in [
+            "what is",
+            "meaning",
+            "define",
+            "解释",
+            "是什么意思",
+            "是什么",
+            "概念",
+            "含义",
+        ]
+    )
+    method = any(
+        keyword in text
+        for keyword in [
+            "method",
+            "model",
+            "framework",
+            "architecture",
+            "pipeline",
+            "方法",
+            "模型",
+            "框架",
+            "流程",
+            "怎么做",
+            "输入",
+            "输出",
+        ]
+    )
+    experiment = any(
+        keyword in text
+        for keyword in [
+            "experiment",
+            "evaluation",
+            "result",
+            "dataset",
+            "metric",
+            "baseline",
+            "ablation",
+            "实验",
+            "结果",
+            "数据集",
+            "指标",
+            "基线",
+            "对比实验",
+            "消融",
+        ]
+    )
+    innovation = any(
+        keyword in text
+        for keyword in [
+            "innovation",
+            "contribution",
+            "novel",
+            "idea",
+            "创新",
+            "贡献",
+            "改进",
+            "新意",
+        ]
+    )
+    comparison = any(
+        keyword in text
+        for keyword in [
+            "compare",
+            "comparison",
+            "versus",
+            "vs",
+            "different",
+            "区别",
+            "对比",
+            "相比",
+            "已有方法",
+            "以前",
+        ]
+    )
+    direction = any(
+        keyword in text
+        for keyword in [
+            "research direction",
+            "future",
+            "idea",
+            "proposal",
+            "选题",
+            "方向",
+            "综述",
+            "建议",
+            "怎么创新",
+        ]
+    )
+    code = include_github or _question_needs_github(question)
+    return {
+        "concept": concept,
+        "method": method,
+        "experiment": experiment,
+        "innovation": innovation,
+        "comparison": comparison,
+        "direction": direction,
+        "code": code,
+    }
+
+
+def _build_agent_plan(
+    question: str,
+    intent: dict[str, bool],
+    include_github: bool,
+    has_pdf_text: bool,
+) -> list[dict]:
+    steps = [
+        _plan_step("read_context", "Reader Agent", "读取论文标题、摘要、结构化总结、方法标签和数据库字段。"),
+    ]
+    if intent["experiment"] or intent["method"] or has_pdf_text:
+        steps.append(
+            _plan_step("read_fulltext", "Reader Agent", "读取 PDF/全文片段或实验字段，优先核对方法与实验细节。")
+        )
+    if intent["code"] or include_github:
+        steps.append(
+            _plan_step("search_github", "Code Agent", "检索 GitHub 候选仓库、复现代码、baseline 或实现线索。")
+        )
+    if intent["experiment"] or intent["innovation"] or intent["comparison"]:
+        steps.append(
+            _plan_step("analyze_citations", "Reader Agent", "读取引用、参考文献和已有引用缓存，判断论文影响与对比对象。")
+        )
+    if intent["innovation"] or intent["comparison"] or intent["direction"]:
+        steps.append(
+            _plan_step("find_related", "Reader Agent", "从本地论文库寻找相似论文，用于相关工作和创新对比。")
+        )
+    if intent["method"] or intent["innovation"] or intent["comparison"]:
+        steps.append(
+            _plan_step("compare_methods", "Tutor Agent", "把当前方法与已有方法、baseline 或相似论文做结构化对比。")
+        )
+    steps.append(_plan_step("reflect", "Critic Agent", "检查回答是否真正覆盖用户问题、证据、方法和实验要素。"))
+    steps.append(_plan_step("synthesize", "Tutor Agent", "生成面向学生的中文解释，不暴露内部推理链。"))
+    return steps
+
+
+def _plan_step(step_type: str, role: str, description: str) -> dict:
+    return {
+        "type": step_type,
+        "role": role,
+        "description": description,
+        "status": "pending",
+    }
+
+
+def _mark_plan_from_tool_calls(plan: list[dict], tool_calls: list[dict]) -> None:
+    by_tool = {call["tool"]: call for call in tool_calls}
+    for step in plan:
+        call = by_tool.get(step["type"])
+        if call is None:
+            continue
+        step["status"] = call.get("status", "completed")
+
+
+def _finalize_agent_tool_calls(tool_calls: list[dict], reflection: dict) -> None:
+    for call in tool_calls:
+        if call["tool"] == "reflect":
+            call["status"] = "completed"
+            call["summary"] = "反思通过。" if reflection["passed"] else "反思发现缺口：" + "、".join(reflection["missing"])
+        elif call["tool"] == "synthesize":
+            call["status"] = "completed"
+            call["summary"] = "已生成面向学生的最终回答。"
+
+
+def _context_tool_summary(row, summary) -> str:
+    tags = _dedupe_list([*summary.method_tags, *summary.topic_tags, *decode_json_object(row, "tags_json", [])])
+    fields = []
+    if summary.method:
+        fields.append("方法字段")
+    if summary.experiments:
+        fields.append("实验字段")
+    if summary.innovation_points:
+        fields.append("创新点")
+    return f"已读取《{row['title']}》；方法标签 {', '.join(tags[:5]) or '暂无'}；结构化字段 {', '.join(fields) or '较少'}。"
+
+
+def _comparison_tool_summary(summary) -> str:
+    if summary.method_comparison:
+        return summary.method_comparison
+    tags = ", ".join(summary.method_tags[:5]) if summary.method_tags else "暂无明确方法标签"
+    return f"当前可对比的方法线索：{tags}。"
+
+
+def _memory_for_question(memory: list[dict], question: str) -> list[dict]:
+    if not memory:
+        return []
+    text = str(question or "").lower()
+    selected = []
+    for item in memory:
+        key = str(item.get("key") or "")
+        value = item.get("value") or {}
+        haystack = f"{key} {json.dumps(value, ensure_ascii=False)}".lower()
+        if not text or any(word in haystack for word in re.findall(r"[a-zA-Z\u4e00-\u9fff]+", text)[:8]):
+            selected.append({"kind": item["kind"], "key": item["key"], "weight": item["weight"]})
+        if len(selected) >= 4:
+            break
+    return selected
+
+
+def _merge_agent_history(request_history: list[dict], stored_turns: list[dict]) -> list[dict]:
+    merged = []
+    for turn in stored_turns[-6:]:
+        merged.append({"question": turn.get("question", ""), "answer": turn.get("answer", "")})
+    for turn in request_history[-6:]:
+        if isinstance(turn, dict):
+            merged.append({"question": turn.get("question", ""), "answer": turn.get("answer", "")})
+    deduped = []
+    seen = set()
+    for turn in merged:
+        key = (turn.get("question", ""), turn.get("answer", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(turn)
+    return deduped[-6:]
+
+
+def _reflect_expert_answer(
+    question: str,
+    answer: str,
+    summary,
+    pdf_text: str,
+    intent: dict[str, bool],
+    tool_calls: list[dict],
+) -> dict:
+    missing: list[str] = []
+    notes: list[str] = []
+    score = 1.0
+    answer_text = str(answer or "").lower()
+
+    if not answer.strip():
+        missing.append("answer")
+        notes.append("回答为空。")
+        score -= 0.6
+
+    if intent["concept"]:
+        requested = _requested_term(question, summary)
+        if requested and requested not in answer_text:
+            missing.append("concept")
+            notes.append("没有直接解释用户询问的概念。")
+            score -= 0.3
+
+    if intent["method"]:
+        method_tokens = ["输入", "input", "模块", "module", "训练", "推理", "输出", "output"]
+        if sum(1 for token in method_tokens if token.lower() in answer_text) < 2:
+            missing.append("method_flow")
+            notes.append("方法问题需要尽量覆盖输入、模块、训练/推理和输出。")
+            score -= 0.2
+
+    if intent["experiment"]:
+        has_experiment_evidence = bool(
+            summary.experiments
+            or summary.datasets_used
+            or summary.metrics_used
+            or _experiment_hint_from_text(pdf_text)
+        )
+        if not has_experiment_evidence:
+            missing.append("experiments")
+            notes.append("当前材料没有足够实验字段、数据集、指标或 baseline 证据。")
+            score -= 0.45
+        else:
+            required = ["dataset", "数据集", "metric", "指标", "baseline", "基线", "result", "结果"]
+            if sum(1 for token in required if token.lower() in answer_text) < 2:
+                missing.append("experiment_structure")
+                notes.append("实验问题需要说明数据集、指标、baseline 和结果。")
+                score -= 0.2
+
+    if intent["code"] and not any(call["tool"] == "search_github" for call in tool_calls):
+        missing.append("github")
+        notes.append("代码/复现问题需要调用 GitHub 检索工具。")
+        score -= 0.3
+
+    score = max(0.0, round(score, 2))
+    return {
+        "score": score,
+        "passed": score >= 0.7 and not missing,
+        "missing": missing,
+        "notes": notes,
+        "checks": {
+            "covers_question": "answer" not in missing,
+            "method_flow": "method_flow" not in missing,
+            "experiment_evidence": "experiments" not in missing,
+            "tool_selection": "github" not in missing,
+        },
+    }
+
+
+def _repair_answer_from_reflection(answer: str, reflection: dict) -> str:
+    additions = []
+    missing = set(reflection.get("missing") or [])
+    if "experiments" in missing:
+        additions.append(
+            "补充说明：当前材料未提供足够完整的实验细节，尤其是数据集、评价指标、baseline、消融实验和具体提升幅度；如果你要判断这篇论文是否值得精读，需要优先补看正文实验表格。"
+        )
+    if "method_flow" in missing:
+        additions.append(
+            "补充说明：方法问题建议继续追问输入、核心模块、训练目标、推理输出四部分，我会按这四块重新拆。"
+        )
+    if "concept" in missing:
+        additions.append("补充说明：我需要先把你问的概念单独解释清楚，再放回这篇论文里说明它承担什么角色。")
+    if not additions:
+        return answer
+    return "\n\n".join([answer.strip(), *additions]).strip()
+
+
+def _agent_session_title(row, question: str) -> str:
+    seed = str(question or "").strip() or row["title"]
+    if len(seed) > 32:
+        return seed[:32] + "..."
+    return seed or "新的论文对话"
 
 
 def _question_needs_github(question: str) -> bool:

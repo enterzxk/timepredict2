@@ -80,6 +80,45 @@ class AgentExportTest(unittest.TestCase):
             self.assertTrue((root / "reports" / "literature_review.md").exists())
             agent.close()
 
+    def test_generate_literature_review_allows_single_paper(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(database_path=root / "papers.sqlite3", report_dir=root / "reports")
+            )
+            paper = Paper(
+                arxiv_id="single-paper",
+                title="Single Paper Review",
+                abstract="Predictive process monitoring with one selected paper.",
+                authors=["A. Researcher"],
+                published="2025-01-01T00:00:00Z",
+                updated="2025-01-01T00:00:00Z",
+                entry_url="https://example.com/single",
+                pdf_url="",
+                categories=[],
+            )
+            summary = PaperSummary(
+                short_summary="关注单篇论文的研究问题、方法和实验结论。",
+                key_points=["可以生成单篇阅读综述。"],
+                method_tags=["Predictive process monitoring"],
+                relevance="适合单篇论文精读。",
+                reading_priority="high",
+            )
+            try:
+                agent.store.upsert_paper(paper, summary)
+
+                result = agent.generate_literature_review(
+                    ["single-paper"],
+                    topic="单篇论文阅读综述",
+                    prefer_llm=False,
+                )
+
+                self.assertEqual(result["paper_count"], 1)
+                self.assertIn("Single Paper Review", result["markdown"])
+                self.assertTrue((root / "reports" / "literature_review.md").exists())
+            finally:
+                agent.close()
+
     def test_add_manual_paper_marks_read_paper(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -312,6 +351,203 @@ class AgentExportTest(unittest.TestCase):
                 self.assertIn("在这篇论文里", answer)
                 self.assertIn("LSTM", answer)
                 self.assertNotIn("你的问题：里面的autoencoder是什么意思\n\n方法思想：", answer)
+            finally:
+                agent.close()
+
+    def test_research_agent_plans_concept_question_and_persists_turn(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(
+                    database_path=root / "papers.sqlite3",
+                    report_dir=root / "reports",
+                    pdf_dir=root / "pdfs",
+                )
+            )
+            agent.llm.token = ""
+            try:
+                paper = Paper(
+                    arxiv_id="agent-concept",
+                    title="Incremental Event Log Remaining Time Prediction",
+                    abstract="The model compares LSTM, Transformer, and Autoencoder variants.",
+                    authors=["A. Researcher"],
+                    published="2025-01-01T00:00:00Z",
+                    updated="2025-01-01T00:00:00Z",
+                    entry_url="https://example.com/agent-concept",
+                    pdf_url="",
+                    categories=[],
+                )
+                summary = PaperSummary(
+                    short_summary="Compares sequence models for remaining time prediction.",
+                    key_points=["Autoencoder is one model variant."],
+                    method_tags=["LSTM", "Transformer", "Autoencoder"],
+                    relevance="Relevant to process prediction.",
+                    reading_priority="high",
+                )
+                agent.store.upsert_paper(paper, summary)
+
+                result = agent.ask_paper_expert(
+                    "agent-concept",
+                    "what is autoencoder in this paper?",
+                    prefer_llm=False,
+                )
+
+                step_types = [step["type"] for step in result["plan"]]
+                self.assertIn("read_context", step_types)
+                self.assertIn("reflect", step_types)
+                self.assertIn("synthesize", step_types)
+                self.assertNotIn("search_github", step_types)
+                self.assertEqual(result["tool_calls"][0]["tool"], "read_context")
+                self.assertTrue(result["reflection"]["passed"])
+                self.assertTrue(result["session_id"])
+                self.assertTrue(result["turn_id"])
+
+                sessions = agent.store.list_agent_sessions()
+                self.assertEqual(len(sessions), 1)
+                self.assertEqual(sessions[0]["id"], result["session_id"])
+                self.assertEqual(sessions[0]["turn_count"], 1)
+                self.assertEqual(sessions[0]["turns"][0]["id"], result["turn_id"])
+            finally:
+                agent.close()
+
+    def test_research_agent_routes_code_question_to_github_tool(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(
+                    database_path=root / "papers.sqlite3",
+                    report_dir=root / "reports",
+                    pdf_dir=root / "pdfs",
+                )
+            )
+            agent.llm.token = ""
+            try:
+                paper = Paper(
+                    arxiv_id="agent-code",
+                    title="Transformer Remaining Time Prediction",
+                    abstract="A Transformer baseline for process mining.",
+                    authors=["A. Researcher"],
+                    published="2025-01-01T00:00:00Z",
+                    updated="2025-01-01T00:00:00Z",
+                    entry_url="https://example.com/agent-code",
+                    pdf_url="",
+                    categories=[],
+                )
+                summary = PaperSummary(
+                    short_summary="Uses Transformer for remaining time prediction.",
+                    key_points=["Compares against baselines."],
+                    method_tags=["Transformer", "Process mining"],
+                    relevance="Relevant to code reproduction.",
+                    reading_priority="high",
+                )
+                agent.store.upsert_paper(paper, summary)
+                agent.github.search = lambda paper, summary, question, limit=5: [
+                    {
+                        "full_name": "example/repro",
+                        "html_url": "https://github.com/example/repro",
+                        "description": "Reproduction code",
+                        "language": "Python",
+                        "stars": 42,
+                        "updated_at": "2025-01-01T00:00:00Z",
+                        "reason": "matches method tags",
+                    }
+                ]
+
+                result = agent.ask_paper_expert(
+                    "agent-code",
+                    "Is there PyTorch code or a GitHub repo for reproducing the baseline?",
+                    prefer_llm=False,
+                )
+
+                step_types = [step["type"] for step in result["plan"]]
+                github_calls = [call for call in result["tool_calls"] if call["tool"] == "search_github"]
+                self.assertIn("search_github", step_types)
+                self.assertEqual(github_calls[0]["status"], "completed")
+                self.assertEqual(result["github_repositories"][0]["full_name"], "example/repro")
+                self.assertIn("example/repro", result["answer"])
+            finally:
+                agent.close()
+
+    def test_research_agent_reflection_marks_missing_experiment_evidence(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(
+                    database_path=root / "papers.sqlite3",
+                    report_dir=root / "reports",
+                    pdf_dir=root / "pdfs",
+                )
+            )
+            agent.llm.token = ""
+            try:
+                paper = Paper(
+                    arxiv_id="agent-experiment-gap",
+                    title="Sparse Event Prediction",
+                    abstract="This paper proposes a sparse sequence model for event prediction.",
+                    authors=["A. Researcher"],
+                    published="2025-01-01T00:00:00Z",
+                    updated="2025-01-01T00:00:00Z",
+                    entry_url="https://example.com/agent-experiment-gap",
+                    pdf_url="",
+                    categories=[],
+                )
+                summary = PaperSummary(
+                    short_summary="Proposes a sparse sequence model.",
+                    key_points=["Focuses on sparse modeling."],
+                    method_tags=["Sequence model"],
+                    relevance="Relevant.",
+                    reading_priority="medium",
+                )
+                agent.store.upsert_paper(paper, summary)
+
+                result = agent.ask_paper_expert(
+                    "agent-experiment-gap",
+                    "How are the experiment results, datasets, metrics, and baselines?",
+                    prefer_llm=False,
+                )
+
+                step_types = [step["type"] for step in result["plan"]]
+                self.assertIn("read_fulltext", step_types)
+                self.assertIn("experiments", result["reflection"]["missing"])
+                self.assertFalse(result["reflection"]["passed"])
+                self.assertIn("当前材料未提供", result["answer"])
+            finally:
+                agent.close()
+
+    def test_agent_storage_persists_sessions_turns_feedback_and_memory(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(database_path=root / "papers.sqlite3", report_dir=root / "reports")
+            )
+            try:
+                session = agent.store.create_agent_session("paper-1", "Research chat")
+                turn = agent.store.add_agent_turn(
+                    session_id=session["id"],
+                    paper_id="paper-1",
+                    question="What is the method?",
+                    answer="It uses a model.",
+                    plan=[{"type": "read_context", "role": "Reader Agent"}],
+                    tool_calls=[{"tool": "read_context", "status": "completed"}],
+                    reflection={"score": 0.8, "passed": True},
+                    memory_used=[{"kind": "preference", "key": "depth"}],
+                )
+                feedback = agent.store.add_agent_feedback(
+                    turn_id=turn["id"],
+                    session_id=session["id"],
+                    rating="bad",
+                    category="missing_experiments",
+                    note="Need experiments.",
+                )
+
+                sessions = agent.store.list_agent_sessions()
+                memory = agent.store.list_agent_memory(kind="feedback")
+
+                self.assertEqual(sessions[0]["id"], session["id"])
+                self.assertEqual(sessions[0]["turn_count"], 1)
+                self.assertEqual(sessions[0]["turns"][0]["plan"][0]["type"], "read_context")
+                self.assertEqual(feedback["category"], "missing_experiments")
+                self.assertEqual(memory[0]["key"], "missing_experiments")
             finally:
                 agent.close()
 

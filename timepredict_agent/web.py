@@ -37,6 +37,9 @@ def _make_handler(config: AgentConfig):
         def do_GET(self) -> None:
             try:
                 parsed = urlparse(self.path)
+                if parsed.path == "/api/agent/sessions":
+                    self._handle_agent_sessions(parsed.query)
+                    return
                 if parsed.path == "/api/papers":
                     self._handle_list(parsed.query)
                     return
@@ -74,6 +77,12 @@ def _make_handler(config: AgentConfig):
         def do_POST(self) -> None:
             try:
                 parsed = urlparse(self.path)
+                if parsed.path == "/api/agent/sessions":
+                    self._handle_create_agent_session()
+                    return
+                if parsed.path == "/api/agent/feedback":
+                    self._handle_agent_feedback()
+                    return
                 if parsed.path == "/api/collect":
                     self._handle_collect()
                     return
@@ -332,10 +341,53 @@ def _make_handler(config: AgentConfig):
                     github_limit=_to_int(payload.get("github_limit"), 5),
                     prefer_llm=bool(payload.get("prefer_llm", True)),
                     history=payload.get("history") if isinstance(payload.get("history"), list) else [],
+                    session_id=payload.get("session_id"),
                 )
                 self._send_json(result)
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_agent_sessions(self, query_string: str) -> None:
+            params = parse_qs(query_string)
+            paper_id = params.get("paper_id", [""])[0].strip() or None
+            limit = _to_int(params.get("limit", ["60"])[0], 60)
+            agent = PaperAgent(config)
+            try:
+                self._send_json({"sessions": agent.list_agent_sessions(paper_id=paper_id, limit=limit)})
+            finally:
+                agent.close()
+
+        def _handle_create_agent_session(self) -> None:
+            payload = self._read_json()
+            paper_id = str(payload.get("paper_id") or "").strip()
+            if not paper_id:
+                self._send_json({"error": "Paper ID is required"}, HTTPStatus.BAD_REQUEST)
+                return
+            agent = PaperAgent(config)
+            try:
+                session = agent.create_agent_session(paper_id, str(payload.get("title") or "").strip())
+                self._send_json({"session": session})
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_agent_feedback(self) -> None:
+            payload = self._read_json()
+            turn_id = str(payload.get("turn_id") or "").strip()
+            session_id = str(payload.get("session_id") or "").strip()
+            rating = str(payload.get("rating") or "").strip()
+            category = str(payload.get("category") or "").strip()
+            note = str(payload.get("note") or "").strip()
+            if not turn_id or not session_id or not rating:
+                self._send_json({"error": "turn_id, session_id and rating are required"}, HTTPStatus.BAD_REQUEST)
+                return
+            agent = PaperAgent(config)
+            try:
+                feedback = agent.add_agent_feedback(turn_id, session_id, rating, category, note)
+                self._send_json({"feedback": feedback})
             finally:
                 agent.close()
 

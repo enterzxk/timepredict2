@@ -360,6 +360,17 @@ input:disabled {
   border-color: #ffd5ce;
 }
 
+.workspace.expert-shell {
+  padding: 14px 22px 22px;
+}
+
+.workspace.expert-shell .workspace-intro,
+.workspace.expert-shell .toolbar,
+.workspace.expert-shell .metrics,
+.workspace.expert-shell .message {
+  display: none;
+}
+
 .content-grid {
   flex: 1;
   min-height: 0;
@@ -732,15 +743,112 @@ input:disabled {
 .expert-detail.expert-chat-mode {
   display: block;
   padding: 0;
-  background: linear-gradient(180deg, #fbfdfd 0%, #ffffff 42%);
+  height: 100%;
+  background: #ffffff;
 }
 
 .expert-chat-stage {
   min-height: 100%;
+  height: 100%;
+  display: block;
+  padding: 0;
+}
+
+.expert-chat-layout {
+  height: 100%;
+  min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(120px, 1fr) auto auto;
-  gap: 14px;
-  padding: 18px clamp(18px, 3.5vw, 46px);
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.expert-chat-layout.no-paper {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.expert-history-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  background: #fbfdfd;
+  padding: 14px;
+}
+
+.expert-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.expert-history-heading strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.expert-history-heading button {
+  min-height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--teal-dark);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.expert-history-heading button:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.expert-session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.expert-session-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 10px;
+  text-align: left;
+}
+
+.expert-session-item:hover,
+.expert-session-item.active {
+  border-color: var(--line-strong);
+  background: #ffffff;
+}
+
+.expert-session-item.active {
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.expert-session-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.expert-session-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.expert-chat-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: clamp(22px, 4vw, 56px);
 }
 
 .expert-stage-topbar {
@@ -792,9 +900,12 @@ input:disabled {
   align-content: center;
 }
 
-.expert-chat-stage > .expert-thread {
-  width: min(100%, 1080px);
+.expert-chat-main > .expert-thread {
+  width: min(100%, 1120px);
   margin: 0 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 20px;
 }
 
 .expert-empty-chat {
@@ -820,7 +931,7 @@ input:disabled {
 }
 
 .expert-center-prompt {
-  width: min(100%, 1060px);
+  width: min(100%, 1120px);
   margin: 0 auto;
   display: grid;
   justify-items: center;
@@ -844,7 +955,7 @@ input:disabled {
 }
 
 .expert-askbar {
-  width: min(100%, 980px);
+  width: min(100%, 1040px);
   min-height: 64px;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
@@ -1061,6 +1172,30 @@ input:disabled {
   padding-top: 10px;
 }
 
+.agent-status {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fcfb;
+  color: var(--muted);
+  margin: 10px 0;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.agent-status.running {
+  width: min(100%, 1120px);
+  margin: 0 auto 14px;
+  border-color: #b9d9d4;
+  color: var(--teal-dark);
+}
+
+.agent-status strong {
+  color: var(--teal-dark);
+  font-size: 12px;
+}
+
 .expert-question strong,
 .expert-answer strong,
 .expert-repos strong {
@@ -1107,6 +1242,31 @@ input:disabled {
 .expert-repos small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.expert-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.expert-feedback button {
+  min-height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--teal-dark);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.expert-feedback button:hover {
+  border-color: var(--teal);
+  color: var(--teal);
 }
 
 .daily-heading {

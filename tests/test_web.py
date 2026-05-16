@@ -80,6 +80,13 @@ class WebSerializationTest(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, app_js)
 
+    def test_frontend_review_allows_single_selected_paper(self):
+        root = Path(__file__).resolve().parents[1]
+        app_js = (root / "timepredict_agent" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("请至少选择 1 篇论文来生成综述。", app_js)
+        self.assertNotIn("请至少选择 2 篇论文来生成综述。", app_js)
+
     def test_frontend_expert_chat_contract(self):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "timepredict_agent" / "static" / "app.js").read_text(encoding="utf-8")
@@ -130,14 +137,30 @@ class WebSerializationTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "timepredict_agent" / "static" / "app.js").read_text(encoding="utf-8")
         styles_css = (root / "timepredict_agent" / "static" / "styles.css").read_text(encoding="utf-8")
+        web_py = (root / "timepredict_agent" / "web.py").read_text(encoding="utf-8")
 
         for contract in [
             "expertPapersCollapsed",
+            "expertSessions",
+            "loadExpertSessions",
+            "createExpertSession",
+            "/api/agent/sessions",
+            "/api/agent/feedback",
+            "data-agent-feedback",
+            "agent-status",
+            "tool_calls",
+            "reflection",
             "expertPaperPanelToggle",
             "expertPaperRail",
             "toggleExpertPaperPanel",
+            "renderExpertHistoryPanel",
+            "data-expert-new-chat",
+            "data-expert-session",
             "data-expert-toggle-papers",
+            "expert-shell",
             "expert-collapsed",
+            "expert-chat-layout",
+            "expert-history-panel",
             "expert-chat-stage",
             "expert-askbar",
             "我们先从哪里开始呢？",
@@ -151,12 +174,39 @@ class WebSerializationTest(unittest.TestCase):
             ".content-grid.expert-collapsed",
             ".panel-heading-actions",
             ".expert-paper-rail",
+            ".workspace.expert-shell .workspace-intro",
+            ".workspace.expert-shell .toolbar",
+            ".workspace.expert-shell .metrics",
+            ".expert-chat-layout",
+            ".expert-history-panel",
             ".expert-chat-stage",
             ".expert-askbar",
             ".expert-quick-actions",
         ]:
             with self.subTest(contract=contract):
                 self.assertIn(contract, styles_css)
+
+        for contract in [
+            "_handle_agent_sessions",
+            "_handle_agent_feedback",
+            "session_id=payload.get(\"session_id\")",
+        ]:
+            with self.subTest(contract=contract):
+                self.assertIn(contract, web_py)
+
+        for removed_contract in [
+            "timepredict.expertSessions.v1",
+            "EXPERT_SESSIONS_KEY",
+            "window.localStorage.getItem(EXPERT_SESSIONS_KEY)",
+            "window.localStorage.setItem(EXPERT_SESSIONS_KEY",
+            "expert-stage-topbar",
+            "expert-current-paper",
+            "expert-context-fold",
+            "当前咨询论文",
+            "刷新当前论文",
+        ]:
+            with self.subTest(removed_contract=removed_contract):
+                self.assertNotIn(removed_contract, app_js)
 
 
 if __name__ == "__main__":

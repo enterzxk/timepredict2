@@ -1,3 +1,5 @@
+const MAX_EXPERT_SESSIONS = 60;
+
 const state = {
   papers: [],
   selectedId: null,
@@ -10,9 +12,15 @@ const state = {
   dailyLoading: false,
   dailyError: "",
   expertPapersCollapsed: false,
+  expertSessions: [],
+  expertSessionsLoaded: false,
+  expertSessionsLoading: false,
+  activeExpertSessionId: null,
+  agentStatus: "",
 };
 
 const el = {
+  workspace: document.querySelector(".workspace"),
   databasePath: document.querySelector("#databasePath"),
   defaultRange: document.querySelector("#defaultRange"),
   llmStatus: document.querySelector("#llmStatus"),
@@ -91,7 +99,7 @@ const viewCopy = {
     title: "阅读报告",
     subtitle: "把筛选后的论文整理成 Markdown 清单或综述草稿，方便后续写作。",
     listTitle: "报告素材",
-    listSubtitle: "可勾选多篇论文生成综述",
+    listSubtitle: "可勾选一篇或多篇论文生成综述",
   },
   settings: {
     title: "配置",
@@ -275,6 +283,9 @@ function openView(view) {
   state.activeView = view;
   selectNav(view);
   render();
+  if (view === "expert") {
+    loadExpertSessions();
+  }
 }
 
 function openManualAddPanel() {
@@ -332,6 +343,7 @@ function renderViewChrome() {
   el.contentGrid.classList.toggle("wide-detail", ["triage", "discovery", "expert"].includes(state.activeView));
   el.contentGrid.classList.toggle("expert-view", isExpertView);
   el.contentGrid.classList.toggle("expert-collapsed", isExpertView && state.expertPapersCollapsed);
+  el.workspace?.classList.toggle("expert-shell", isExpertView);
   if (el.expertPaperPanelToggle) {
     el.expertPaperPanelToggle.hidden = !isExpertView;
     el.expertPaperPanelToggle.textContent = state.expertPapersCollapsed ? "展开" : "收起";
@@ -641,8 +653,8 @@ async function runBatchAction(action) {
 }
 
 async function generateReview(ids) {
-  if (ids.length < 2) {
-    showMessage("请至少选择 2 篇论文来生成综述。", true);
+  if (ids.length < 1) {
+    showMessage("请至少选择 1 篇论文来生成综述。", true);
     return;
   }
   const topic = state.keyword || "事件序列预测与预测性流程监控";
@@ -1041,6 +1053,17 @@ function paperTime(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function shortDateTime(value) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) return "刚刚";
+  const date = new Date(time);
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hour = `${date.getHours()}`.padStart(2, "0");
+  const minute = `${date.getMinutes()}`.padStart(2, "0");
+  return `${month}-${day} ${hour}:${minute}`;
+}
+
 function renderComparisonRow(field, papers) {
   const hasAny = papers.some((paper) => {
     const value = paper.summary[field.key];
@@ -1218,18 +1241,27 @@ async function runPaperAction(action, paperId) {
 }
 
 function renderExpertPanel() {
+  if (!state.expertSessionsLoaded && !state.expertSessionsLoading) {
+    loadExpertSessions();
+  }
   const paper = state.papers.find((item) => item.arxiv_id === state.selectedId);
-  const toggleLabel = state.expertPapersCollapsed ? "展开咨询论文" : "收起咨询论文";
   el.paperDetail.className = "paper-detail expert-detail expert-chat-mode";
   if (!paper) {
     el.paperDetail.innerHTML = `
-      <section id="expertChatPanel" class="expert-chat-stage">
-        <div class="expert-stage-topbar">
-          <button class="recommendation-link" data-expert-toggle-papers type="button">${toggleLabel}</button>
-        </div>
-        <div class="expert-center-prompt">
-          <h2>我们先从哪里开始呢？</h2>
-          <p>先从咨询论文列表选择一篇论文，再向论文专家提问。</p>
+      <section id="expertChatPanel" class="expert-chat-stage expert-chat-only">
+        <div class="expert-chat-layout no-paper">
+          <aside class="expert-history-panel">
+            <div class="expert-history-heading">
+              <strong>历史对话</strong>
+            </div>
+            <p class="panel-note">选择一篇咨询论文后即可开始新对话。</p>
+          </aside>
+          <main class="expert-chat-main">
+            <div class="expert-center-prompt">
+              <h2>我们先从哪里开始呢？</h2>
+              <p>先从咨询论文列表选择一篇论文，再向论文专家提问。</p>
+            </div>
+          </main>
         </div>
       </section>
     `;
@@ -1237,9 +1269,8 @@ function renderExpertPanel() {
     return;
   }
 
-  const summary = paper.summary || {};
-  const chats = paper.expertChat || [];
-  const methodTags = (summary.method_tags || []).slice(0, 4);
+  const session = currentExpertSessionForPaper(paper);
+  const chats = session?.messages || [];
   const quickQuestions = [
     {
       label: "解释方法",
@@ -1259,57 +1290,38 @@ function renderExpertPanel() {
     },
   ];
   el.paperDetail.innerHTML = `
-    <section id="expertChatPanel" class="expert-chat-stage">
-      <div class="expert-stage-topbar">
-        <button class="recommendation-link" data-expert-toggle-papers type="button">${toggleLabel}</button>
-        <button class="recommendation-link" data-expert-open-selected type="button">刷新当前论文</button>
-      </div>
-
-      <article class="expert-current-paper">
-        <span>当前咨询论文</span>
-        <strong>${escapeHtml(paper.title)}</strong>
-        <div class="expert-paper-meta">
-          <span>${escapeHtml(sourceLabel[paper.source] || paper.source || "未知来源")}</span>
-          <span>${escapeHtml((paper.published || "").slice(0, 10) || "日期未知")}</span>
-          <span>${escapeHtml(priorityLabel[summary.reading_priority] || summary.reading_priority || "未评级")}</span>
-          ${methodTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
-        </div>
-      </article>
-
-      <div class="expert-thread ${chats.length ? "" : "empty"}">
-        ${chats.length ? chats.map(renderExpertTurn).join("") : `
-          <div class="expert-empty-chat">
-            <strong>还没有对话</strong>
-            <p>你可以直接问概念、方法流程、创新点、实验结论，专家会围绕当前论文回答。</p>
+    <section id="expertChatPanel" class="expert-chat-stage expert-chat-only">
+      <div class="expert-chat-layout">
+        ${renderExpertHistoryPanel()}
+        <main class="expert-chat-main">
+          ${renderAgentRunningStatus()}
+          <div class="expert-thread ${chats.length ? "" : "empty"}">
+            ${chats.length ? chats.map(renderExpertTurn).join("") : `
+              <div class="expert-empty-chat">
+                <strong>还没有对话</strong>
+                <p>你可以直接问概念、方法流程、创新点、实验结论，专家会围绕当前论文回答。</p>
+              </div>
+            `}
           </div>
-        `}
+
+          <section class="expert-center-prompt">
+            <h2>我们先从哪里开始呢？</h2>
+            <form class="expert-askbar" data-expert-form>
+              <button class="askbar-icon" data-expert-suggestion="请先用一句话告诉我这篇论文解决了什么问题，然后再展开方法细节。" type="button" title="填入推荐问题">+</button>
+              <textarea data-expert-question rows="1" placeholder="有问题，尽管问"></textarea>
+              <button class="askbar-send" data-expert-submit type="submit" title="发送问题">提问</button>
+            </form>
+            <div class="expert-quick-actions">
+              ${quickQuestions.map((item) => `
+                <button data-expert-suggestion="${escapeAttribute(item.question)}" type="button">${escapeHtml(item.label)}</button>
+              `).join("")}
+              <button data-expert-github type="button">查找资料</button>
+            </div>
+          </section>
+        </main>
       </div>
-
-      <section class="expert-center-prompt">
-        <h2>我们先从哪里开始呢？</h2>
-        <form class="expert-askbar" data-expert-form>
-          <button class="askbar-icon" data-expert-suggestion="请先用一句话告诉我这篇论文解决了什么问题，然后再展开方法细节。" type="button" title="填入推荐问题">+</button>
-          <textarea data-expert-question rows="1" placeholder="有问题，尽管问"></textarea>
-          <button class="askbar-send" data-expert-submit type="submit" title="发送问题">提问</button>
-        </form>
-        <div class="expert-quick-actions">
-          ${quickQuestions.map((item) => `
-            <button data-expert-suggestion="${escapeAttribute(item.question)}" type="button">${escapeHtml(item.label)}</button>
-          `).join("")}
-          <button data-expert-github type="button">查找资料</button>
-        </div>
-      </section>
-
-      <details class="expert-context-fold">
-        <summary>站内摘要参考</summary>
-        <p>${escapeHtml(summary.short_summary || paper.abstract || "暂无摘要。")}</p>
-        ${summary.deep_summary ? `<p>${escapeHtml(summary.deep_summary)}</p>` : ""}
-      </details>
     </section>
   `;
-  el.paperDetail.querySelectorAll("[data-expert-open-selected]").forEach((button) => {
-    button.addEventListener("click", openExpertForSelectedPaper);
-  });
   bindExpertChatEvents(paper);
 }
 
@@ -1317,12 +1329,207 @@ function openExpertForSelectedPaper() {
   state.activeView = "expert";
   selectNav("expert");
   render();
+  loadExpertSessions();
   if (el.paperDetail) el.paperDetail.scrollTop = 0;
 }
 
 function toggleExpertPaperPanel() {
   state.expertPapersCollapsed = !state.expertPapersCollapsed;
   render();
+}
+
+function renderExpertHistoryPanel() {
+  const sessions = state.expertSessions
+    .filter((session) => session && session.paperId)
+    .slice(0, MAX_EXPERT_SESSIONS);
+  return `
+    <aside class="expert-history-panel">
+      <div class="expert-history-heading">
+        <strong>历史对话</strong>
+        <button data-expert-new-chat type="button">新对话</button>
+      </div>
+      <div class="expert-session-list">
+        ${state.expertSessionsLoading ? `<p class="panel-note">正在加载历史对话...</p>` : ""}
+        ${sessions.length ? sessions.map(renderExpertSessionItem).join("") : `<p class="panel-note">还没有历史对话。</p>`}
+      </div>
+    </aside>
+  `;
+}
+
+function renderExpertSessionItem(session) {
+  const active = session.id === state.activeExpertSessionId;
+  const count = (session.messages || []).length;
+  return `
+    <button class="expert-session-item ${active ? "active" : ""}" data-expert-session="${escapeAttribute(session.id)}" type="button">
+      <span>${escapeHtml(session.title || "新的论文对话")}</span>
+      <small>${escapeHtml(shortDateTime(session.updatedAt || session.createdAt))} · ${count} 问</small>
+    </button>
+  `;
+}
+
+function currentExpertSessionForPaper(paper) {
+  let session = state.expertSessions.find((item) => item.id === state.activeExpertSessionId && item.paperId === paper.arxiv_id);
+  if (!session) {
+    session = state.expertSessions.find((item) => item.paperId === paper.arxiv_id);
+  }
+  if (session) {
+    session.paperTitle = paper.title;
+    session.messages = session.messages || [];
+    state.activeExpertSessionId = session.id;
+    paper.expertChat = session.messages;
+  }
+  return session || null;
+}
+
+async function ensureExpertSession(paper) {
+  const existing = currentExpertSessionForPaper(paper);
+  if (existing) return existing;
+  return createExpertSession(paper);
+}
+
+async function createExpertSession(paper) {
+  const data = await postJson("/api/agent/sessions", {
+    paper_id: paper.arxiv_id,
+    title: expertSessionTitle(paper, []),
+  });
+  const session = normalizeExpertSession(data.session || {});
+  upsertExpertSession(session);
+  state.activeExpertSessionId = session.id;
+  paper.expertChat = session.messages;
+  return session;
+}
+
+async function startNewExpertSession(paper) {
+  try {
+    const session = await createExpertSession(paper);
+    state.activeExpertSessionId = session.id;
+    paper.expertChat = [];
+    render();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+function openExpertSession(sessionId) {
+  const session = state.expertSessions.find((item) => item.id === sessionId);
+  if (!session) return;
+  const paper = state.papers.find((item) => item.arxiv_id === session.paperId);
+  if (!paper) {
+    showMessage("这条历史对话对应的论文当前不在列表中，请先重新收集或搜索到它。", true);
+    return;
+  }
+  state.selectedId = paper.arxiv_id;
+  state.activeExpertSessionId = session.id;
+  syncPaperExpertChat(paper, session);
+  state.activeView = "expert";
+  selectNav("expert");
+  render();
+}
+
+function updateExpertSessionAfterAnswer(paper, turn) {
+  const normalizedTurn = normalizeExpertTurn(turn);
+  let session = state.expertSessions.find((item) => item.id === normalizedTurn.session_id);
+  if (!session) {
+    session = {
+      id: normalizedTurn.session_id,
+      paperId: paper.arxiv_id,
+      paperTitle: paper.title,
+      title: expertSessionTitle(paper, [normalizedTurn]),
+      createdAt: normalizedTurn.created_at,
+      updatedAt: normalizedTurn.created_at,
+      messages: [],
+    };
+  }
+  session.messages = [...(session.messages || []), normalizedTurn];
+  session.updatedAt = new Date().toISOString();
+  session.paperTitle = paper.title;
+  session.title = expertSessionTitle(paper, session.messages);
+  syncPaperExpertChat(paper, session);
+  upsertExpertSession(session);
+  state.activeExpertSessionId = session.id;
+}
+
+function expertSessionTitle(paper, messages = []) {
+  const firstQuestion = messages.find((message) => message.question)?.question || "";
+  const seed = firstQuestion || paper.title || "新的论文对话";
+  return seed.length > 28 ? `${seed.slice(0, 28)}...` : seed;
+}
+
+function upsertExpertSession(session) {
+  if (!session?.id) return;
+  state.expertSessions = [
+    session,
+    ...state.expertSessions.filter((item) => item.id !== session.id),
+  ].slice(0, MAX_EXPERT_SESSIONS);
+}
+
+async function loadExpertSessions() {
+  if (state.expertSessionsLoading) return;
+  state.expertSessionsLoading = true;
+  try {
+    const data = await getJson(`/api/agent/sessions?limit=${MAX_EXPERT_SESSIONS}`);
+    state.expertSessions = (data.sessions || []).map(normalizeExpertSession);
+    state.expertSessionsLoaded = true;
+    const paper = state.papers.find((item) => item.arxiv_id === state.selectedId);
+    if (paper) {
+      syncPaperExpertChat(paper, currentExpertSessionForPaper(paper));
+    }
+  } catch (error) {
+    state.expertSessionsLoaded = true;
+    showMessage(`历史对话加载失败：${error.message}`, true);
+  } finally {
+    state.expertSessionsLoading = false;
+    if (state.activeView === "expert") {
+      render();
+    }
+  }
+}
+
+function normalizeExpertSession(session) {
+  const messages = (session.turns || session.messages || []).map(normalizeExpertTurn);
+  return {
+    id: session.id || "",
+    paperId: session.paper_id || session.paperId || "",
+    paperTitle: session.paper_title || session.paperTitle || "",
+    title: session.title || "新的论文对话",
+    createdAt: session.created_at || session.createdAt || "",
+    updatedAt: session.updated_at || session.updatedAt || "",
+    messages,
+  };
+}
+
+function normalizeExpertTurn(turn) {
+  return {
+    id: turn.id || turn.turn_id || "",
+    session_id: turn.session_id || "",
+    paper_id: turn.paper_id || "",
+    question: turn.question || "",
+    answer: turn.answer || "",
+    used_llm: Boolean(turn.used_llm),
+    llm_error: turn.llm_error || "",
+    github_error: turn.github_error || "",
+    github_repositories: turn.github_repositories || [],
+    plan: turn.plan || [],
+    tool_calls: turn.tool_calls || [],
+    reflection: turn.reflection || null,
+    memory_used: turn.memory_used || [],
+    created_at: turn.created_at || new Date().toISOString(),
+  };
+}
+
+function syncPaperExpertChat(paper, session) {
+  if (!paper) return;
+  paper.expertChat = session?.messages || [];
+}
+
+function renderAgentRunningStatus() {
+  if (!state.agentStatus) return "";
+  return `
+    <div class="agent-status running">
+      <strong>Agent 正在执行</strong>
+      <span>${escapeHtml(state.agentStatus)}</span>
+    </div>
+  `;
 }
 
 function renderExpertChat(paper) {
@@ -1355,6 +1562,12 @@ function bindExpertChatEvents(paper) {
     button.addEventListener("click", toggleExpertPaperPanel);
   });
   if (!paper) return;
+  el.paperDetail.querySelectorAll("[data-expert-new-chat]").forEach((button) => {
+    button.addEventListener("click", () => startNewExpertSession(paper));
+  });
+  el.paperDetail.querySelectorAll("[data-expert-session]").forEach((button) => {
+    button.addEventListener("click", () => openExpertSession(button.dataset.expertSession));
+  });
   el.paperDetail.querySelectorAll("[data-expert-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1373,6 +1586,9 @@ function bindExpertChatEvents(paper) {
   el.paperDetail.querySelectorAll("[data-expert-github]").forEach((button) => {
     button.addEventListener("click", () => submitExpertQuestion(paper.arxiv_id, true));
   });
+  el.paperDetail.querySelectorAll("[data-agent-feedback]").forEach((button) => {
+    button.addEventListener("click", () => submitAgentFeedback(button));
+  });
 }
 
 function renderExpertTurn(turn) {
@@ -1383,6 +1599,7 @@ function renderExpertTurn(turn) {
         <strong>你问：</strong>
         <p>${escapeHtml(turn.question)}</p>
       </div>
+      ${renderAgentStatusSummary(turn)}
       <div class="expert-answer">
         <strong>专家回答${turn.used_llm ? "（LLM）" : "（本地兜底）"}：</strong>
         <p>${escapeHtml(turn.answer).replaceAll("\n", "<br>")}</p>
@@ -1400,8 +1617,90 @@ function renderExpertTurn(turn) {
           `).join("")}
         </div>
       ` : ""}
+      ${renderAgentFeedback(turn)}
     </article>
   `;
+}
+
+function renderAgentStatusSummary(turn) {
+  const plan = turn.plan || [];
+  const tool_calls = turn.tool_calls || [];
+  const reflection = turn.reflection || {};
+  if (!plan.length && !tool_calls.length && reflection.score === undefined) return "";
+  const steps = plan.map((step) => `${agentStepLabel(step.type)}：${agentStatusLabel(step.status)}`).join(" · ");
+  const tools = tool_calls.map((call) => `${agentStepLabel(call.tool)} ${agentStatusLabel(call.status)}`).join(" · ");
+  const score = reflection.score !== undefined ? `反思评分 ${Math.round(Number(reflection.score) * 100)}%` : "";
+  const missing = (reflection.missing || []).length ? `缺口：${reflection.missing.join("、")}` : "反思通过";
+  return `
+    <div class="agent-status">
+      <strong>Agent 执行摘要</strong>
+      ${steps ? `<span>${escapeHtml(steps)}</span>` : ""}
+      ${tools ? `<span>${escapeHtml(tools)}</span>` : ""}
+      ${score ? `<span>${escapeHtml(score)} · ${escapeHtml(missing)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderAgentFeedback(turn) {
+  if (!turn.id || !turn.session_id) return "";
+  const options = [
+    ["helpful", "有帮助"],
+    ["too_general", "太泛"],
+    ["missing_experiments", "缺实验"],
+    ["missing_innovation", "缺创新"],
+    ["wrong", "回答错了"],
+  ];
+  return `
+    <div class="expert-feedback">
+      ${options.map(([category, label]) => `
+        <button data-agent-feedback="${category}" data-turn-id="${escapeAttribute(turn.id)}" data-session-id="${escapeAttribute(turn.session_id)}" type="button">${escapeHtml(label)}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function agentStepLabel(type) {
+  const labels = {
+    read_context: "读取论文",
+    read_fulltext: "读取全文",
+    search_github: "检索代码",
+    analyze_citations: "引用分析",
+    find_related: "相似论文",
+    compare_methods: "方法对比",
+    reflect: "反思回答",
+    synthesize: "生成回答",
+  };
+  return labels[type] || type || "步骤";
+}
+
+function agentStatusLabel(status) {
+  const labels = {
+    pending: "等待",
+    running: "进行中",
+    completed: "完成",
+    missing: "缺失",
+    empty: "无结果",
+  };
+  return labels[status] || status || "完成";
+}
+
+async function submitAgentFeedback(button) {
+  const category = button.dataset.agentFeedback || "";
+  const rating = category === "helpful" ? "good" : "bad";
+  button.disabled = true;
+  try {
+    await postJson("/api/agent/feedback", {
+      turn_id: button.dataset.turnId,
+      session_id: button.dataset.sessionId,
+      rating,
+      category,
+      note: "",
+    });
+    showMessage("反馈已记录，后续回答会参考这个偏好。");
+  } catch (error) {
+    button.disabled = false;
+    showMessage(error.message, true);
+  }
 }
 
 async function submitExpertQuestion(paperId, includeGithub) {
@@ -1418,29 +1717,41 @@ async function submitExpertQuestion(paperId, includeGithub) {
   }
 
   setBusy(true);
+  state.agentStatus = includeGithub ? "规划中 · 读取论文 · 检索代码 · 反思回答" : "规划中 · 读取论文 · 反思回答";
+  render();
   showMessage(includeGithub ? "论文专家正在结合 GitHub 检索回答。" : "论文专家正在阅读站内信息并回答。");
   try {
+    const session = await ensureExpertSession(paper);
     const data = await postJson(`/api/papers/${encodeURIComponent(paperId)}/expert-chat`, {
       question,
       include_github: includeGithub,
       github_limit: 5,
+      session_id: session.id,
       history: expertHistoryForPayload(paper),
     });
-    paper.expertChat = [
-      ...(paper.expertChat || []),
-      {
-        question,
-        answer: data.answer,
-        used_llm: data.used_llm,
-        llm_error: data.llm_error,
-        github_error: data.github_error,
-        github_repositories: data.github_repositories || [],
-      },
-    ];
+    updateExpertSessionAfterAnswer(paper, {
+      id: data.turn_id,
+      session_id: data.session_id,
+      paper_id: data.paper_id,
+      question,
+      answer: data.answer,
+      used_llm: data.used_llm,
+      llm_error: data.llm_error,
+      github_error: data.github_error,
+      github_repositories: data.github_repositories || [],
+      plan: data.plan || [],
+      tool_calls: data.tool_calls || [],
+      reflection: data.reflection || null,
+      memory_used: data.memory_used || [],
+    });
+    state.agentStatus = "";
     render();
+    loadExpertSessions();
     scrollToDetailTarget("expertChatPanel");
     showMessage(data.used_llm ? "论文专家已用 LLM 回答。" : "论文专家已用本地结构化信息回答。");
   } catch (error) {
+    state.agentStatus = "";
+    render();
     showMessage(error.message, true);
   } finally {
     setBusy(false);
@@ -1448,7 +1759,8 @@ async function submitExpertQuestion(paperId, includeGithub) {
 }
 
 function expertHistoryForPayload(paper) {
-  return (paper.expertChat || []).slice(-6).map((turn) => ({
+  const session = currentExpertSessionForPaper(paper);
+  return (session?.messages || paper.expertChat || []).slice(-6).map((turn) => ({
     question: turn.question || "",
     answer: turn.answer || "",
   }));
