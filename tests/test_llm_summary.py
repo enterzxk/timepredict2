@@ -1,5 +1,13 @@
-from timepredict_agent.llm_summary import _extract_json, _merge_summary, _safe_max_tokens
-from timepredict_agent.models import PaperSummary
+from unittest.mock import patch
+
+from timepredict_agent.llm_summary import (
+    AnthropicSummaryClient,
+    _build_expert_prompt,
+    _extract_json,
+    _merge_summary,
+    _safe_max_tokens,
+)
+from timepredict_agent.models import Paper, PaperSummary
 import unittest
 
 
@@ -67,6 +75,84 @@ class LlmSummaryTest(unittest.TestCase):
         self.assertEqual(merged.key_points, ["old point"])
         self.assertEqual(merged.deep_summary, "deep")
         self.assertEqual(merged.llm_model, "test-model")
+
+    def test_deepseek_base_url_uses_chat_completions_for_expert_answer(self):
+        captured = {}
+
+        def fake_post_json(url, payload, token, api_format="anthropic"):
+            captured["url"] = url
+            captured["payload"] = payload
+            captured["api_format"] = api_format
+            captured["token"] = token
+            return {"choices": [{"message": {"content": "Autoencoder 是自编码器。"}}]}
+
+        paper = Paper(
+            arxiv_id="p1",
+            title="A Paper",
+            abstract="Autoencoder based method.",
+            authors=["A"],
+            published="2025-01-01T00:00:00Z",
+            updated="2025-01-01T00:00:00Z",
+            entry_url="",
+            pdf_url="",
+        )
+        summary = PaperSummary(
+            short_summary="summary",
+            key_points=[],
+            method_tags=["Autoencoder"],
+            relevance="relevant",
+            reading_priority="high",
+        )
+
+        with patch.dict(
+            "os.environ",
+            {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com",
+                "ANTHROPIC_MODEL": "deepseek-v4-pro",
+                "ANTHROPIC_AUTH_TOKEN": "token",
+            },
+            clear=True,
+        ), patch("timepredict_agent.llm_summary._post_json", fake_post_json):
+            client = AnthropicSummaryClient()
+            answer = client.answer_paper_question(paper, summary, "", "autoencoder 是什么意思？", [])
+
+        self.assertEqual(answer, "Autoencoder 是自编码器。")
+        self.assertEqual(captured["url"], "https://api.deepseek.com/chat/completions")
+        self.assertEqual(captured["api_format"], "openai")
+        self.assertEqual(captured["payload"]["messages"][0]["role"], "system")
+        self.assertEqual(captured["payload"]["messages"][1]["role"], "user")
+
+    def test_expert_prompt_includes_recent_dialogue_history(self):
+        paper = Paper(
+            arxiv_id="p1",
+            title="A Paper",
+            abstract="Autoencoder based method.",
+            authors=["A"],
+            published="2025-01-01T00:00:00Z",
+            updated="2025-01-01T00:00:00Z",
+            entry_url="",
+            pdf_url="",
+        )
+        summary = PaperSummary(
+            short_summary="summary",
+            key_points=[],
+            method_tags=["Autoencoder"],
+            relevance="relevant",
+            reading_priority="high",
+        )
+
+        prompt = _build_expert_prompt(
+            paper,
+            summary,
+            "",
+            "那它和 LSTM 有什么区别？",
+            [],
+            [{"question": "autoencoder 是什么意思？", "answer": "它是自编码器。"}],
+        )
+
+        self.assertIn("最近对话", prompt)
+        self.assertIn("autoencoder 是什么意思？", prompt)
+        self.assertIn("那它和 LSTM 有什么区别？", prompt)
 
 
 if __name__ == "__main__":

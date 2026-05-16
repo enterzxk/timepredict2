@@ -5,6 +5,11 @@ const state = {
   selectedIds: new Set(),
   status: null,
   activeView: "library",
+  detailHistory: [],
+  dailyRecommendations: null,
+  dailyLoading: false,
+  dailyError: "",
+  expertPapersCollapsed: false,
 };
 
 const el = {
@@ -14,7 +19,13 @@ const el = {
   searchInput: document.querySelector("#searchInput"),
   maxResults: document.querySelector("#maxResults"),
   recentDays: document.querySelector("#recentDays"),
+  viewTitle: document.querySelector("#viewTitle"),
+  viewSubtitle: document.querySelector("#viewSubtitle"),
+  listTitle: document.querySelector("#listTitle"),
+  listSubtitle: document.querySelector("#listSubtitle"),
+  contentGrid: document.querySelector("#contentGrid"),
   addPaperButton: document.querySelector("#addPaperButton"),
+  uploadPaperButton: document.querySelector("#uploadPaperButton"),
   collectButton: document.querySelector("#collectButton"),
   exportButton: document.querySelector("#exportButton"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -40,7 +51,88 @@ const sourceLabel = {
   ieee_xplore: "IEEE Xplore",
   google_scholar: "Google Scholar HTML",
   manual: "手动加入",
+  uploaded: "上传论文",
 };
+
+const viewCopy = {
+  library: {
+    title: "论文库",
+    subtitle: "先收集候选论文，再按相关性、方法标签、引用和解读完整度筛出值得精读的内容。",
+    listTitle: "论文列表",
+    listSubtitle: "按发布时间倒序排列",
+  },
+  triage: {
+    title: "速筛看板",
+    subtitle: "把论文变成可判断的阅读队列：先看是否相关、是否有方法创新、是否值得进入精读。",
+    listTitle: "候选论文",
+    listSubtitle: "点击论文仍可查看详情，右侧会给出精读优先级",
+  },
+  discovery: {
+    title: "发现扩展",
+    subtitle: "围绕你的研究方向扩展检索词和来源，减少“收集到的论文太少或太窄”的问题。",
+    listTitle: "当前结果",
+    listSubtitle: "用右侧检索方案继续扩展论文池",
+  },
+  daily: {
+    title: "每日推荐",
+    subtitle: "每天更新一组 AI、深度学习和机器学习方向的高质量候选论文，优先顶会顶刊和高引用。",
+    listTitle: "本地论文库",
+    listSubtitle: "每日推荐可加入这里继续精读",
+  },
+  expert: {
+    title: "论文专家",
+    subtitle: "把当前论文交给专家对话页，专门问方法思想、创新点、实验结果和 GitHub 复现。",
+    listTitle: "选择咨询论文",
+    listSubtitle: "点击左侧论文后，右侧专家页会切换到这篇论文",
+  },
+  report: {
+    title: "阅读报告",
+    subtitle: "把筛选后的论文整理成 Markdown 清单或综述草稿，方便后续写作。",
+    listTitle: "报告素材",
+    listSubtitle: "可勾选多篇论文生成综述",
+  },
+  settings: {
+    title: "配置",
+    subtitle: "查看本地路径、来源、LLM 可用性和收集参数。",
+    listTitle: "配置关联论文",
+    listSubtitle: "左侧保留论文列表，方便随时回到阅读对象",
+  },
+  manual: {
+    title: "添加已读论文",
+    subtitle: "把自动检索没覆盖到的重要论文补进本地库。",
+    listTitle: "已有论文",
+    listSubtitle: "保存后会回到论文库",
+  },
+  upload: {
+    title: "上传论文",
+    subtitle: "上传 PDF 后自动入库、提取全文，并基于这篇论文推荐相似论文。",
+    listTitle: "已有论文",
+    listSubtitle: "上传完成后会自动选中新论文",
+  },
+};
+
+const discoveryQueries = [
+  {
+    label: "预测性流程监控",
+    query: "predictive process monitoring event log transformer remaining time",
+    note: "适合找流程挖掘、下一活动预测、剩余时间预测的综合论文。",
+  },
+  {
+    label: "增量事件日志",
+    query: "incremental event log prediction online learning process mining",
+    note: "适合找在线更新、概念漂移、持续学习相关工作。",
+  },
+  {
+    label: "剩余时间预测",
+    query: "business process remaining time prediction deep learning benchmark",
+    note: "适合找与你当前题目最贴近的业务流程剩余时间预测论文。",
+  },
+  {
+    label: "方法基线",
+    query: "next activity prediction event log LSTM Transformer benchmark",
+    note: "适合补充模型对比、baseline 和实验设置。",
+  },
+];
 
 init();
 
@@ -53,6 +145,7 @@ function init() {
 function bindEvents() {
   el.refreshButton.addEventListener("click", () => loadPapers());
   el.addPaperButton.addEventListener("click", openManualAddPanel);
+  el.uploadPaperButton.addEventListener("click", openUploadPanel);
   el.collectButton.addEventListener("click", collectPapers);
   el.exportButton.addEventListener("click", exportReport);
   el.searchInput.addEventListener("input", debounce(() => {
@@ -107,8 +200,9 @@ function renderStatus(status) {
 async function loadPapers() {
   setBusy(true);
   try {
-    const data = await getJson(`/api/papers?limit=80&keyword=${encodeURIComponent(state.keyword)}`);
-    state.papers = data.papers || [];
+    const limit = clampNumber(el.maxResults.value, 1, 500, 120);
+    const data = await getJson(`/api/papers?limit=${limit}&keyword=${encodeURIComponent(state.keyword)}`);
+    state.papers = sortPapersForDisplay(data.papers || []);
     state.selectedIds = new Set(Array.from(state.selectedIds).filter((id) => state.papers.some((paper) => paper.arxiv_id === id)));
 
     if (!state.papers.some((paper) => paper.arxiv_id === state.selectedId)) {
@@ -131,12 +225,14 @@ async function collectPapers() {
   }
 
   setBusy(true);
-  showMessage(`正在从 ${sources.map((source) => sourceLabel[source] || source).join("、")} 收集论文，请稍等。`);
+  const queryText = state.keyword ? `，检索词：${state.keyword}` : "";
+  showMessage(`正在从 ${sources.map((source) => sourceLabel[source] || source).join("、")} 收集论文${queryText}，请稍等。`);
   try {
     const data = await postJson("/api/collect", {
       max_results: el.maxResults.value,
       recent_days: el.recentDays.value,
       sources,
+      query: state.keyword || undefined,
     });
 
     await loadPapers();
@@ -158,7 +254,7 @@ async function collectPapers() {
 async function exportReport() {
   setBusy(true);
   try {
-    const data = await postJson("/api/export", { output: "reports/papers.md", limit: 80 });
+    const data = await postJson("/api/export", { output: "reports/papers.md", limit: clampNumber(el.maxResults.value, 1, 500, 120) });
     state.activeView = "report";
     selectNav("report");
     renderReportPanel(data);
@@ -174,19 +270,21 @@ async function exportReport() {
 function openView(view) {
   state.activeView = view;
   selectNav(view);
-  if (view === "library") {
-    renderDetail();
-  } else if (view === "report") {
-    renderReportPanel();
-  } else if (view === "settings") {
-    renderSettingsPanel();
-  }
+  render();
 }
 
 function openManualAddPanel() {
   state.activeView = "manual";
+  renderViewChrome();
   document.querySelectorAll("[data-nav]").forEach((button) => button.classList.remove("active"));
   renderManualAddPanel();
+}
+
+function openUploadPanel() {
+  state.activeView = "upload";
+  renderViewChrome();
+  document.querySelectorAll("[data-nav]").forEach((button) => button.classList.remove("active"));
+  renderUploadPanel();
 }
 
 function selectNav(view) {
@@ -196,28 +294,52 @@ function selectNav(view) {
 }
 
 function render() {
+  renderViewChrome();
   renderStats();
   renderList();
-  if (state.activeView === "report") {
+  if (state.activeView === "triage") {
+    renderTriagePanel();
+  } else if (state.activeView === "discovery") {
+    renderDiscoveryPanel();
+  } else if (state.activeView === "daily") {
+    renderDailyPanel();
+  } else if (state.activeView === "expert") {
+    renderExpertPanel();
+  } else if (state.activeView === "report") {
     renderReportPanel();
   } else if (state.activeView === "settings") {
     renderSettingsPanel();
+  } else if (state.activeView === "manual") {
+    renderManualAddPanel();
+  } else if (state.activeView === "upload") {
+    renderUploadPanel();
   } else {
     renderDetail();
   }
 }
 
+function renderViewChrome() {
+  const copy = viewCopy[state.activeView] || viewCopy.library;
+  const isExpertView = state.activeView === "expert";
+  el.viewTitle.textContent = copy.title;
+  el.viewSubtitle.textContent = copy.subtitle;
+  el.listTitle.textContent = copy.listTitle;
+  el.listSubtitle.textContent = copy.listSubtitle;
+  el.contentGrid.classList.toggle("wide-detail", ["triage", "discovery", "expert"].includes(state.activeView));
+  el.contentGrid.classList.toggle("expert-view", isExpertView);
+  el.contentGrid.classList.toggle("expert-collapsed", isExpertView && state.expertPapersCollapsed);
+}
+
 function renderStats() {
   const methodTags = new Set();
-  let high = 0;
   for (const paper of state.papers) {
-    if (paper.summary.reading_priority === "high") high += 1;
     for (const tag of paper.summary.method_tags || []) methodTags.add(tag);
   }
+  const latestValidPaper = state.papers.find((paper) => !isFutureDate(paper.published));
   el.paperCount.textContent = state.papers.length;
-  el.highCount.textContent = high;
+  el.highCount.textContent = state.papers.filter((paper) => readingScore(paper) >= 72).length;
   el.methodCount.textContent = methodTags.size;
-  el.latestDate.textContent = state.papers[0]?.published?.slice(0, 10) || "--";
+  el.latestDate.textContent = latestValidPaper?.published?.slice(0, 10) || "--";
 }
 
 function renderList() {
@@ -241,8 +363,10 @@ function renderList() {
   el.paperList.querySelectorAll("[data-select-paper]").forEach((content) => {
     content.addEventListener("click", () => {
       state.selectedId = content.dataset.selectPaper;
-      state.activeView = "library";
-      selectNav("library");
+      const staysInExpert = state.activeView === "expert";
+      state.activeView = staysInExpert ? "expert" : "library";
+      state.detailHistory = [];
+      selectNav(state.activeView);
       render();
     });
     content.addEventListener("keydown", (event) => {
@@ -259,9 +383,17 @@ function renderList() {
 
 function renderPaperRow(paper) {
   const priority = paper.summary.reading_priority || "medium";
-  const tags = [priorityLabel[priority] || priority, ...(paper.summary.method_tags || []).slice(0, 3)];
+  const score = readingScore(paper);
+  const decision = readingDecision(paper);
+  const dateIsFuture = isFutureDate(paper.published);
+  const tags = [
+    decision.label,
+    priorityLabel[priority] || priority,
+    ...(dateIsFuture ? ["日期异常"] : []),
+    ...(paper.summary.method_tags || []).slice(0, 2),
+  ];
   const isSelected = state.selectedIds.has(paper.arxiv_id);
-  const isActive = paper.arxiv_id === state.selectedId && state.activeView === "library";
+  const isActive = paper.arxiv_id === state.selectedId && ["library", "expert"].includes(state.activeView);
   return `
     <article class="paper-row ${isActive ? "selected" : ""}">
       <label class="paper-checkbox" title="选择用于批量操作">
@@ -273,11 +405,12 @@ function renderPaperRow(paper) {
           <span>${escapeHtml(sourceLabel[paper.source] || paper.source || "未知来源")}</span>
           <span>${escapeHtml(paper.arxiv_id)}</span>
           <span>引用 ${paper.citation_count || 0}</span>
+          <span>速筛 ${score}</span>
           <span>${escapeHtml((paper.authors || []).slice(0, 3).join(", "))}</span>
         </div>
-        <div class="tag-row">${tags.map((tag, index) => `<span class="tag ${index === 0 ? `priority-${priority}` : ""}">${escapeHtml(tag)}</span>`).join("")}</div>
+        <div class="tag-row">${tags.map((tag, index) => `<span class="tag ${index <= 1 ? `priority-${priority}` : ""}">${escapeHtml(tag)}</span>`).join("")}</div>
       </div>
-      <time class="paper-date">${escapeHtml((paper.published || "").slice(0, 10))}</time>
+      <time class="paper-date ${dateIsFuture ? "date-warning" : ""}">${escapeHtml((paper.published || "").slice(0, 10))}</time>
     </article>
   `;
 }
@@ -350,6 +483,52 @@ function renderManualAddPanel() {
   });
 }
 
+function renderUploadPanel() {
+  el.paperDetail.className = "paper-detail";
+  el.paperDetail.innerHTML = `
+    <h2 class="detail-title">上传 PDF 论文并推荐</h2>
+    <p class="panel-note">选择一篇 PDF，系统会保存到本地 PDF 目录、尝试提取全文文本、生成本地中文解读，并基于它从现有论文库推荐相似论文。</p>
+    <form id="uploadPaperForm" class="manual-form">
+      <label>
+        PDF 文件
+        <input name="file" type="file" accept="application/pdf,.pdf" required />
+      </label>
+      <label>
+        标题
+        <input name="title" placeholder="可选；留空会尝试从 PDF 或文件名识别" />
+      </label>
+      <label>
+        作者
+        <input name="authors" placeholder="可选，多个作者用逗号分隔" />
+      </label>
+      <div class="manual-form-grid">
+        <label>
+          年份
+          <input name="year" inputmode="numeric" placeholder="2024" />
+        </label>
+        <label>
+          标签
+          <input name="tags" value="上传论文" placeholder="例如：剩余时间预测,流程挖掘" />
+        </label>
+      </div>
+      <label>
+        摘要
+        <textarea name="abstract" rows="6" placeholder="可选；留空会尝试从 PDF 提取摘要或正文片段"></textarea>
+      </label>
+      <div class="report-actions">
+        <button type="submit">上传并推荐</button>
+        <button type="button" data-upload-cancel>取消</button>
+      </div>
+    </form>
+  `;
+  el.paperDetail.querySelector("#uploadPaperForm").addEventListener("submit", submitUploadedPaper);
+  el.paperDetail.querySelector("[data-upload-cancel]").addEventListener("click", () => {
+    state.activeView = "library";
+    selectNav("library");
+    renderDetail();
+  });
+}
+
 async function submitManualPaper(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -365,6 +544,36 @@ async function submitManualPaper(event) {
     selectNav("library");
     await loadPapers();
     showMessage(`已加入论文库：${data.paper.title}`);
+  } catch (error) {
+    showMessage(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function submitUploadedPaper(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  setBusy(true);
+  showMessage("正在上传并分析 PDF，较大的文件可能需要几秒。");
+  try {
+    const response = await fetch("/api/papers/upload", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await parseResponse(response);
+    state.selectedId = data.paper.arxiv_id;
+    state.keyword = "";
+    el.searchInput.value = "";
+    state.activeView = "library";
+    selectNav("library");
+    await loadPapers();
+    const paper = state.papers.find((item) => item.arxiv_id === data.paper.arxiv_id);
+    if (paper) paper.related = data.related || paper.related || [];
+    render();
+    const textHint = data.pdf_text_available ? "已提取 PDF 文本。" : "未提取到 PDF 文本，可安装 pymupdf 后获得更好解读。";
+    showMessage(`上传完成：${data.paper.title}。已生成 ${data.related?.length || 0} 条相似推荐。${textHint}`);
   } catch (error) {
     showMessage(error.message, true);
   } finally {
@@ -501,6 +710,325 @@ function renderComparison() {
   `;
 }
 
+function renderTriagePanel() {
+  const ranked = [...state.papers].sort((a, b) => readingScore(b) - readingScore(a));
+  el.paperDetail.className = "paper-detail triage-detail";
+  if (!ranked.length) {
+    el.paperDetail.innerHTML = `
+      <h2 class="detail-title">速筛看板</h2>
+      <p class="panel-note">当前没有可筛选的论文。先在“发现扩展”里选择一个检索方向，然后点击“多源收集”。</p>
+    `;
+    return;
+  }
+
+  const high = ranked.filter((paper) => readingScore(paper) >= 72).length;
+  const medium = ranked.filter((paper) => readingScore(paper) >= 48 && readingScore(paper) < 72).length;
+  const low = ranked.length - high - medium;
+  el.paperDetail.innerHTML = `
+    <h2 class="detail-title">速筛看板</h2>
+    <p class="panel-note">这个分数不是论文质量结论，而是帮你决定阅读顺序：相关性、方法标签、引用、是否已有深度解读都会影响排序。</p>
+    <div class="triage-summary">
+      <div><strong>${high}</strong><span>建议精读</span></div>
+      <div><strong>${medium}</strong><span>可以扫读</span></div>
+      <div><strong>${low}</strong><span>暂时跳过</span></div>
+    </div>
+    <div class="triage-list">
+      ${ranked.slice(0, 12).map((paper) => renderTriageCard(paper)).join("")}
+    </div>
+  `;
+
+  el.paperDetail.querySelectorAll("[data-triage-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const paperId = button.dataset.paperId;
+      const action = button.dataset.triageAction;
+      if (action === "open") {
+        state.selectedId = paperId;
+        state.activeView = "library";
+        selectNav("library");
+        render();
+      } else if (action === "select") {
+        state.selectedIds.add(paperId);
+        render();
+      } else {
+        runPaperAction(action, paperId);
+      }
+    });
+  });
+}
+
+function renderTriageCard(paper) {
+  const score = readingScore(paper);
+  const decision = readingDecision(paper);
+  const evidence = readingEvidence(paper);
+  return `
+    <article class="triage-card">
+      <div class="score-ring ${decision.tone}">
+        <strong>${score}</strong>
+        <span>${escapeHtml(decision.label)}</span>
+      </div>
+      <div class="triage-card-body">
+        <h3>${escapeHtml(paper.title)}</h3>
+        <p>${escapeHtml(paper.summary.short_summary || paper.abstract || "暂无摘要。")}</p>
+        <div class="tag-row">${evidence.map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join("")}</div>
+        <div class="triage-actions">
+          <button data-triage-action="open" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">查看详情</button>
+          <button data-triage-action="select" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">加入批量</button>
+          <button data-triage-action="local-summary" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">刷新解读</button>
+          <button data-triage-action="recommend" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">找相似</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderDiscoveryPanel() {
+  const counts = countBySource();
+  const activeQuery = state.keyword || "使用默认配置主题";
+  el.paperDetail.className = "paper-detail discovery-detail";
+  el.paperDetail.innerHTML = `
+    <h2 class="detail-title">发现扩展</h2>
+    <p class="panel-note">当前检索词：${escapeHtml(activeQuery)}。点击下面的方向会写入搜索框，再点“多源收集”即可按该方向扩展论文池。</p>
+    <section class="discovery-section">
+      <h3>推荐检索方向</h3>
+      <div class="query-grid">
+        ${discoveryQueries.map((item) => `
+          <button class="query-card" data-discovery-query="${escapeAttribute(item.query)}" type="button">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span>${escapeHtml(item.query)}</span>
+            <small>${escapeHtml(item.note)}</small>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+    <section class="discovery-section">
+      <h3>来源覆盖</h3>
+      <div class="source-grid">
+        ${Object.entries(sourceLabel)
+          .filter(([source]) => source !== "manual")
+          .map(([source, label]) => `<div><strong>${counts[source] || 0}</strong><span>${escapeHtml(label)}</span></div>`)
+          .join("")}
+      </div>
+    </section>
+    <section class="discovery-section">
+      <h3>效率建议</h3>
+      <ul>
+        <li>先用较宽关键词收集，再到“速筛看板”看分数和理由。</li>
+        <li>对高分论文执行“LLM 深度解读”，再用“找相似”扩展同主题论文。</li>
+        <li>如果某个来源经常为空，增大“天数”或换成更具体的英文关键词。</li>
+      </ul>
+    </section>
+  `;
+
+  el.paperDetail.querySelectorAll("[data-discovery-query]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.keyword = button.dataset.discoveryQuery;
+      el.searchInput.value = state.keyword;
+      loadPapers();
+      showMessage("已切换检索词。确认数量、天数和来源后，点击“多源收集”扩展论文。");
+    });
+  });
+}
+
+function renderDailyPanel() {
+  el.paperDetail.className = "paper-detail daily-detail";
+  if (!state.dailyRecommendations && !state.dailyLoading && !state.dailyError) {
+    loadDailyRecommendations(false);
+  }
+  if (state.dailyLoading) {
+    el.paperDetail.innerHTML = `
+      <h2 class="detail-title">每日推荐</h2>
+      <p class="panel-note">正在更新今日 AI/深度学习论文推荐，请稍等。</p>
+    `;
+    return;
+  }
+  const data = state.dailyRecommendations;
+  if (!data) {
+    el.paperDetail.innerHTML = `
+      <h2 class="detail-title">每日推荐</h2>
+      <p class="panel-note warning">${escapeHtml(state.dailyError || "还没有加载推荐。点击下方按钮重新获取。")}</p>
+      <div class="report-actions">
+        <button data-daily-refresh type="button">刷新今日推荐</button>
+      </div>
+    `;
+    bindDailyPanelEvents();
+    return;
+  }
+  const items = data.items || [];
+  el.paperDetail.innerHTML = `
+    <div class="daily-heading">
+      <div>
+        <h2 class="detail-title">每日推荐</h2>
+        <p class="panel-note">日期：${escapeHtml(data.date || "--")}；方向：${escapeHtml(data.topic || "人工智能、深度学习")}${data.from_cache ? "；已使用今日缓存" : "；刚刚更新"}</p>
+      </div>
+      <button data-daily-refresh type="button">刷新今日推荐</button>
+    </div>
+    <section class="daily-summary">
+      <div><strong>${items.length}</strong><span>今日候选</span></div>
+      <div><strong>${items.filter((item) => (item.quality_signals || []).some((signal) => /NeurIPS|ICML|ICLR|CVPR|ACL|EMNLP|AAAI|IJCAI|KDD|TPAMI|JMLR|Nature|Science/i.test(signal))).length}</strong><span>顶会顶刊信号</span></div>
+      <div><strong>${items.filter((item) => (item.paper?.citation_count || 0) > 0).length}</strong><span>有引用数据</span></div>
+    </section>
+    <div class="daily-list">
+      ${items.length ? items.map(renderDailyRecommendationCard).join("") : `<p class="panel-note warning">今天暂时没有拿到推荐结果，可以点“刷新今日推荐”重试，或检查论文来源是否可访问。</p>`}
+    </div>
+  `;
+  bindDailyPanelEvents();
+}
+
+async function loadDailyRecommendations(force) {
+  state.dailyLoading = true;
+  state.dailyError = "";
+  renderDailyPanel();
+  try {
+    const data = await getJson(`/api/daily-recommendations?limit=10${force ? "&force=1" : ""}`);
+    state.dailyRecommendations = data;
+    for (const item of data.items || []) {
+      if (item.paper) mergePaperIntoState(item.paper);
+    }
+    showMessage(force ? "今日推荐已刷新。" : "今日推荐已加载。");
+  } catch (error) {
+    state.dailyError = `每日推荐加载失败：${error.message}`;
+    showMessage(state.dailyError, true);
+  } finally {
+    state.dailyLoading = false;
+    if (state.activeView === "daily") renderDailyPanel();
+  }
+}
+
+function renderDailyRecommendationCard(item) {
+  const paper = item.paper || {};
+  const summary = paper.summary || {};
+  const signals = item.quality_signals || [];
+  return `
+    <article class="daily-card">
+      <div class="daily-rank">D${item.rank || ""}</div>
+      <div class="daily-card-body">
+        <div class="daily-title-row">
+          <h3>${escapeHtml(paper.title || "未命名论文")}</h3>
+          <span>${escapeHtml(String(item.score ?? "--"))}</span>
+        </div>
+        <div class="paper-meta">
+          <span>${escapeHtml(sourceLabel[paper.source] || paper.source || "未知来源")}</span>
+          <span>${escapeHtml(paper.venue || paper.year || (paper.published || "").slice(0, 10) || "未知年份")}</span>
+          <span>引用 ${paper.citation_count || 0}</span>
+        </div>
+        <p>${escapeHtml(item.reason || summary.relevance || "基于主题和质量信号推荐。")}</p>
+        <div class="daily-signal-row">
+          <strong>质量信号</strong>
+          ${(signals.length ? signals : ["AI/深度学习主题"]).map((signal) => `<span class="tag">${escapeHtml(signal)}</span>`).join("")}
+        </div>
+        <p>${escapeHtml(summary.short_summary || paper.abstract || "暂无摘要。")}</p>
+        <div class="recommendation-actions">
+          <button class="recommendation-link" data-daily-action="add" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">加入论文库</button>
+          <button class="recommendation-link primary" data-daily-action="open" data-paper-id="${escapeAttribute(paper.arxiv_id)}" type="button">查看站内总结</button>
+          ${paper.entry_url ? `<a class="recommendation-link" href="${escapeAttribute(paper.entry_url)}" target="_blank" rel="noopener">打开出处</a>` : ""}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function bindDailyPanelEvents() {
+  el.paperDetail.querySelectorAll("[data-daily-refresh]").forEach((button) => {
+    button.addEventListener("click", () => loadDailyRecommendations(true));
+  });
+  el.paperDetail.querySelectorAll("[data-daily-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const paper = state.papers.find((item) => item.arxiv_id === button.dataset.paperId);
+      if (!paper) {
+        showMessage("这篇论文还没有加入本地状态，请先刷新今日推荐。", true);
+        return;
+      }
+      if (button.dataset.dailyAction === "add") {
+        state.selectedId = paper.arxiv_id;
+        renderList();
+        showMessage(`已加入论文库：${paper.title}`);
+        return;
+      }
+      state.selectedId = paper.arxiv_id;
+      state.activeView = "library";
+      selectNav("library");
+      render();
+    });
+  });
+}
+
+function mergePaperIntoState(paper) {
+  const index = state.papers.findIndex((item) => item.arxiv_id === paper.arxiv_id);
+  if (index >= 0) {
+    state.papers[index] = paper;
+  } else {
+    state.papers.unshift(paper);
+  }
+  state.papers = sortPapersForDisplay(state.papers);
+}
+
+function readingScore(paper) {
+  let score = 20;
+  const summary = paper.summary || {};
+  if (summary.reading_priority === "high") score += 28;
+  if (summary.reading_priority === "medium") score += 16;
+  score += Math.min(18, Math.log10((paper.citation_count || 0) + 1) * 8);
+  score += Math.min(12, (summary.method_tags || []).length * 3);
+  score += Math.min(10, (summary.topic_tags || paper.tags || []).length * 2);
+  if (summary.deep_summary || summary.method || summary.contribution) score += 12;
+  if ((summary.innovation_points || []).length) score += 8;
+  if (paper.local_pdf_path) score += 4;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function readingDecision(paper) {
+  const score = readingScore(paper);
+  if (score >= 72) return { label: "建议精读", tone: "strong" };
+  if (score >= 48) return { label: "可以扫读", tone: "medium" };
+  return { label: "暂时跳过", tone: "low" };
+}
+
+function readingEvidence(paper) {
+  const summary = paper.summary || {};
+  const evidence = [];
+  if (summary.reading_priority === "high") evidence.push("主题高度相关");
+  if ((summary.method_tags || []).length) evidence.push(`方法：${summary.method_tags.slice(0, 2).join(" / ")}`);
+  if (paper.citation_count) evidence.push(`引用 ${paper.citation_count}`);
+  if (summary.deep_summary) evidence.push("已有深度解读");
+  if ((summary.innovation_points || []).length) evidence.push("有创新点拆解");
+  if (!evidence.length) evidence.push("信息不足，建议先扫摘要");
+  return evidence.slice(0, 4);
+}
+
+function countBySource() {
+  return state.papers.reduce((result, paper) => {
+    result[paper.source] = (result[paper.source] || 0) + 1;
+    return result;
+  }, {});
+}
+
+function sortPapersForDisplay(papers) {
+  return [...papers].sort((a, b) => {
+    const aRank = dateRank(a.published);
+    const bRank = dateRank(b.published);
+    if (aRank !== bRank) return aRank - bRank;
+    return paperTime(b.published) - paperTime(a.published);
+  });
+}
+
+function dateRank(value) {
+  if (!value) return 2;
+  return isFutureDate(value) ? 1 : 0;
+}
+
+function isFutureDate(value) {
+  const time = paperTime(value);
+  if (!Number.isFinite(time)) return false;
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return time > today.getTime();
+}
+
+function paperTime(value) {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
 function renderComparisonRow(field, papers) {
   const hasAny = papers.some((paper) => {
     const value = paper.summary[field.key];
@@ -535,6 +1063,7 @@ function renderDetail() {
 
   el.paperDetail.className = "paper-detail";
   el.paperDetail.innerHTML = `
+    ${renderDetailHistoryBar()}
     <h2 class="detail-title">${escapeHtml(paper.title)}</h2>
     <div class="paper-meta">
       <span>${escapeHtml((paper.published || "").slice(0, 10))}</span>
@@ -556,8 +1085,14 @@ function renderDetail() {
       <button data-action="llm-summary" data-id="${escapeAttribute(paper.arxiv_id)}" type="button" ${state.status?.llm_available ? "" : "disabled"}>LLM 深度解读</button>
       <button data-action="enrich" data-id="${escapeAttribute(paper.arxiv_id)}" type="button">引用分析</button>
       <button data-action="recommend" data-id="${escapeAttribute(paper.arxiv_id)}" type="button">相似推荐</button>
+      <button data-action="innovation-advice" data-id="${escapeAttribute(paper.arxiv_id)}" type="button">创新建议</button>
+      <button data-expert-open-selected type="button">论文专家</button>
     </div>
     ${state.status?.llm_available ? "" : `<p class="panel-note warning">LLM 未配置，深度解读按钮会保持不可用。请在配置面板检查 .env。</p>`}
+    ${renderRecommendationSpotlight(paper)}
+    ${renderRelatedSummaryPreview(paper.relatedPreview)}
+    ${renderInnovationAdvice(paper.innovationAdvice)}
+    ${renderExpertChat(paper)}
     <section class="detail-block">
       <h3>摘要速览</h3>
       <p>${escapeHtml(paper.summary.short_summary || "暂无摘要。")}</p>
@@ -575,7 +1110,6 @@ function renderDetail() {
       <h3>作者</h3>
       <p>${escapeHtml((paper.authors || []).join(", ") || "未知作者")}</p>
     </section>
-    ${renderRelations("相似论文推荐", paper.related)}
     ${renderRelations("近期引用", paper.citations)}
     ${renderRelations("参考文献", paper.references)}
   `;
@@ -583,6 +1117,36 @@ function renderDetail() {
   el.paperDetail.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", () => runPaperAction(button.dataset.action, button.dataset.id));
   });
+  el.paperDetail.querySelectorAll("[data-open-related]").forEach((button) => {
+    button.addEventListener("click", () => openRelatedPaper(button.dataset.openRelated));
+  });
+  el.paperDetail.querySelectorAll("[data-promote-related]").forEach((button) => {
+    button.addEventListener("click", () => promoteRelatedPaper(button.dataset.promoteRelated));
+  });
+  el.paperDetail.querySelectorAll("[data-close-related-preview]").forEach((button) => {
+    button.addEventListener("click", closeRelatedPreview);
+  });
+  el.paperDetail.querySelectorAll("[data-return-recommendations]").forEach((button) => {
+    button.addEventListener("click", returnToRecommendationList);
+  });
+  el.paperDetail.querySelectorAll("[data-history-back]").forEach((button) => {
+    button.addEventListener("click", restoreDetailHistory);
+  });
+  el.paperDetail.querySelectorAll("[data-expert-open-selected]").forEach((button) => {
+    button.addEventListener("click", openExpertForSelectedPaper);
+  });
+  bindExpertChatEvents(paper);
+}
+
+function renderDetailHistoryBar() {
+  const last = state.detailHistory[state.detailHistory.length - 1];
+  if (!last) return "";
+  return `
+    <div class="detail-history-bar">
+      <button data-history-back type="button">← 返回上一步</button>
+      <span>${escapeHtml(last.label || "回到刚刚的论文推荐")}</span>
+    </div>
+  `;
 }
 
 async function runPaperAction(action, paperId) {
@@ -620,7 +1184,19 @@ async function runPaperAction(action, paperId) {
       const paper = state.papers.find((item) => item.arxiv_id === paperId);
       if (paper) paper.related = data.related;
       render();
-      showMessage("相似论文推荐已生成。");
+      showMessage(`相似论文推荐已生成，已在详情页顶部显示 ${data.related?.length || 0} 条推荐。`);
+      return;
+    }
+    if (action === "innovation-advice") {
+      showMessage("正在根据上传论文和相似论文生成创新建议。");
+      const data = await postJson(`/api/papers/${encodeURIComponent(paperId)}/innovation-advice`, { limit: 8 });
+      const paper = state.papers.find((item) => item.arxiv_id === paperId);
+      if (paper) {
+        paper.related = data.related || paper.related || [];
+        paper.innovationAdvice = data.advice || [];
+      }
+      render();
+      showMessage(`已生成 ${data.advice?.length || 0} 条创新建议。`);
     }
   } catch (error) {
     showMessage(error.message, true);
@@ -629,12 +1205,558 @@ async function runPaperAction(action, paperId) {
   }
 }
 
+function renderExpertPanel() {
+  const paper = state.papers.find((item) => item.arxiv_id === state.selectedId);
+  const toggleLabel = state.expertPapersCollapsed ? "展开咨询论文" : "收起咨询论文";
+  el.paperDetail.className = "paper-detail expert-detail expert-chat-mode";
+  if (!paper) {
+    el.paperDetail.innerHTML = `
+      <section id="expertChatPanel" class="expert-chat-stage">
+        <div class="expert-stage-topbar">
+          <button class="recommendation-link" data-expert-toggle-papers type="button">${toggleLabel}</button>
+        </div>
+        <div class="expert-center-prompt">
+          <h2>我们先从哪里开始呢？</h2>
+          <p>先从咨询论文列表选择一篇论文，再向论文专家提问。</p>
+        </div>
+      </section>
+    `;
+    bindExpertChatEvents(null);
+    return;
+  }
+
+  const summary = paper.summary || {};
+  const chats = paper.expertChat || [];
+  const methodTags = (summary.method_tags || []).slice(0, 4);
+  const quickQuestions = [
+    {
+      label: "解释方法",
+      question: "请详细解释这篇论文的方法思想：输入是什么，中间模块怎么处理，输出是什么，为什么这样设计。",
+    },
+    {
+      label: "创新对比",
+      question: "请说明这篇论文相对已有方法的核心创新点，并逐条对比它解决了之前方法的什么不足。",
+    },
+    {
+      label: "实验结果",
+      question: "请梳理这篇论文的实验设置、数据集、baseline、主要指标和结果提升，告诉我哪些结果最关键。",
+    },
+    {
+      label: "阅读路线",
+      question: "请按精读顺序告诉我这篇论文应该先看哪些章节、表格和图，并说明每一部分要看什么。",
+    },
+  ];
+  el.paperDetail.innerHTML = `
+    <section id="expertChatPanel" class="expert-chat-stage">
+      <div class="expert-stage-topbar">
+        <button class="recommendation-link" data-expert-toggle-papers type="button">${toggleLabel}</button>
+        <button class="recommendation-link" data-expert-open-selected type="button">刷新当前论文</button>
+      </div>
+
+      <article class="expert-current-paper">
+        <span>当前咨询论文</span>
+        <strong>${escapeHtml(paper.title)}</strong>
+        <div class="expert-paper-meta">
+          <span>${escapeHtml(sourceLabel[paper.source] || paper.source || "未知来源")}</span>
+          <span>${escapeHtml((paper.published || "").slice(0, 10) || "日期未知")}</span>
+          <span>${escapeHtml(priorityLabel[summary.reading_priority] || summary.reading_priority || "未评级")}</span>
+          ${methodTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+        </div>
+      </article>
+
+      <div class="expert-thread ${chats.length ? "" : "empty"}">
+        ${chats.length ? chats.map(renderExpertTurn).join("") : `
+          <div class="expert-empty-chat">
+            <strong>还没有对话</strong>
+            <p>你可以直接问概念、方法流程、创新点、实验结论，专家会围绕当前论文回答。</p>
+          </div>
+        `}
+      </div>
+
+      <section class="expert-center-prompt">
+        <h2>我们先从哪里开始呢？</h2>
+        <form class="expert-askbar" data-expert-form>
+          <button class="askbar-icon" data-expert-suggestion="请先用一句话告诉我这篇论文解决了什么问题，然后再展开方法细节。" type="button" title="填入推荐问题">+</button>
+          <textarea data-expert-question rows="1" placeholder="有问题，尽管问"></textarea>
+          <button class="askbar-send" data-expert-submit type="submit" title="发送问题">提问</button>
+        </form>
+        <div class="expert-quick-actions">
+          ${quickQuestions.map((item) => `
+            <button data-expert-suggestion="${escapeAttribute(item.question)}" type="button">${escapeHtml(item.label)}</button>
+          `).join("")}
+          <button data-expert-github type="button">查找资料</button>
+        </div>
+      </section>
+
+      <details class="expert-context-fold">
+        <summary>站内摘要参考</summary>
+        <p>${escapeHtml(summary.short_summary || paper.abstract || "暂无摘要。")}</p>
+        ${summary.deep_summary ? `<p>${escapeHtml(summary.deep_summary)}</p>` : ""}
+      </details>
+    </section>
+  `;
+  el.paperDetail.querySelectorAll("[data-expert-open-selected]").forEach((button) => {
+    button.addEventListener("click", openExpertForSelectedPaper);
+  });
+  bindExpertChatEvents(paper);
+}
+
+function openExpertForSelectedPaper() {
+  state.activeView = "expert";
+  selectNav("expert");
+  render();
+  if (el.paperDetail) el.paperDetail.scrollTop = 0;
+}
+
+function renderExpertChat(paper) {
+  const chats = paper.expertChat || [];
+  return `
+    <section id="expertChatPanel" class="expert-chat">
+      <div class="spotlight-heading">
+        <div>
+          <h3>论文专家 Agent</h3>
+          <p>围绕当前论文提问，它会结合站内摘要、全文片段、实验字段和 GitHub 候选代码给出解释。</p>
+        </div>
+        <span>${chats.length ? `${chats.length} 问` : "可提问"}</span>
+      </div>
+      <form class="expert-form" data-expert-form>
+        <textarea data-expert-question rows="3" placeholder="例如：这篇论文的方法到底怎么做？创新点是什么？实验比哪些 baseline 强？有没有 GitHub 代码可以参考？"></textarea>
+        <div class="expert-actions">
+          <button class="recommendation-link primary" data-expert-submit type="submit">提问</button>
+          <button class="recommendation-link" data-expert-github type="button">找代码/复现</button>
+        </div>
+      </form>
+      <div class="expert-thread">
+        ${chats.length ? chats.map(renderExpertTurn).join("") : `<p class="panel-note">你可以直接问不懂的概念、方法流程、创新点、实验结果，或者让它帮你找 GitHub 复现仓库。</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function bindExpertChatEvents(paper) {
+  el.paperDetail.querySelectorAll("[data-expert-toggle-papers]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.expertPapersCollapsed = !state.expertPapersCollapsed;
+      render();
+    });
+  });
+  if (!paper) return;
+  el.paperDetail.querySelectorAll("[data-expert-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitExpertQuestion(paper.arxiv_id, false);
+    });
+  });
+  el.paperDetail.querySelectorAll("[data-expert-suggestion]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const textarea = el.paperDetail.querySelector("[data-expert-question]");
+      if (!textarea) return;
+      textarea.value = button.dataset.expertSuggestion || "";
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  });
+  el.paperDetail.querySelectorAll("[data-expert-github]").forEach((button) => {
+    button.addEventListener("click", () => submitExpertQuestion(paper.arxiv_id, true));
+  });
+}
+
+function renderExpertTurn(turn) {
+  const repositories = turn.github_repositories || [];
+  return `
+    <article class="expert-turn">
+      <div class="expert-question">
+        <strong>你问：</strong>
+        <p>${escapeHtml(turn.question)}</p>
+      </div>
+      <div class="expert-answer">
+        <strong>专家回答${turn.used_llm ? "（LLM）" : "（本地兜底）"}：</strong>
+        <p>${escapeHtml(turn.answer).replaceAll("\n", "<br>")}</p>
+      </div>
+      ${turn.llm_error ? `<p class="panel-note warning">LLM 失败，已切换本地回答：${escapeHtml(turn.llm_error)}</p>` : ""}
+      ${turn.github_error ? `<p class="panel-note warning">${escapeHtml(turn.github_error)}</p>` : ""}
+      ${repositories.length ? `
+        <div class="expert-repos">
+          <strong>GitHub 候选仓库</strong>
+          ${repositories.map((repo) => `
+            <a href="${escapeAttribute(repo.html_url)}" target="_blank" rel="noopener">
+              <span>${escapeHtml(repo.full_name)}</span>
+              <small>${escapeHtml(repo.language || "未知语言")} · ${escapeHtml(repo.stars || 0)} stars · ${escapeHtml(repo.reason || "关键词匹配")}</small>
+            </a>
+          `).join("")}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+async function submitExpertQuestion(paperId, includeGithub) {
+  const paper = state.papers.find((item) => item.arxiv_id === paperId);
+  if (!paper) return;
+  const textarea = el.paperDetail.querySelector("[data-expert-question]");
+  let question = (textarea?.value || "").trim();
+  if (!question && includeGithub) {
+    question = "请帮我找这篇论文相关的 GitHub 代码或复现仓库，并说明这些代码可以参考什么。";
+  }
+  if (!question) {
+    showMessage("先输入你想问论文专家的问题。", true);
+    return;
+  }
+
+  setBusy(true);
+  showMessage(includeGithub ? "论文专家正在结合 GitHub 检索回答。" : "论文专家正在阅读站内信息并回答。");
+  try {
+    const data = await postJson(`/api/papers/${encodeURIComponent(paperId)}/expert-chat`, {
+      question,
+      include_github: includeGithub,
+      github_limit: 5,
+      history: expertHistoryForPayload(paper),
+    });
+    paper.expertChat = [
+      ...(paper.expertChat || []),
+      {
+        question,
+        answer: data.answer,
+        used_llm: data.used_llm,
+        llm_error: data.llm_error,
+        github_error: data.github_error,
+        github_repositories: data.github_repositories || [],
+      },
+    ];
+    render();
+    scrollToDetailTarget("expertChatPanel");
+    showMessage(data.used_llm ? "论文专家已用 LLM 回答。" : "论文专家已用本地结构化信息回答。");
+  } catch (error) {
+    showMessage(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function expertHistoryForPayload(paper) {
+  return (paper.expertChat || []).slice(-6).map((turn) => ({
+    question: turn.question || "",
+    answer: turn.answer || "",
+  }));
+}
+
+function renderRecommendationSpotlight(paper) {
+  const items = paper.related || [];
+  if (!items.length) {
+    return `
+      <section id="recommendationSpotlight" class="recommendation-spotlight empty-recommendation">
+        <div>
+          <h3>相似论文推荐</h3>
+          <p>还没有生成推荐。点击上方“相似推荐”，系统会基于当前论文从本地论文库里找相近论文。</p>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <section id="recommendationSpotlight" class="recommendation-spotlight">
+      <div class="spotlight-heading">
+        <div>
+          <h3>相似论文推荐</h3>
+          <p>这些是系统根据当前论文匹配出的候选论文，适合拿来做相关工作和创新对比。</p>
+        </div>
+        <span>${items.length} 条</span>
+      </div>
+      <div class="recommendation-grid">
+        ${items.slice(0, 8).map((item, index) => renderRecommendationCard(item, index)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderRecommendationCard(item, index) {
+  const localPaper = findLocalPaperForRecommendation(item);
+  const sourceAction = item.url
+    ? `<a class="recommendation-link" href="${escapeAttribute(item.url)}" target="_blank" rel="noopener">打开出处</a>`
+    : "";
+  const resolvePayload = recommendationResolvePayload(item, localPaper);
+  const stationAction = `<button class="recommendation-link primary" data-open-related="${escapeAttribute(resolvePayload)}" type="button">展开总结</button>`;
+  const title = `<button class="recommendation-title-button" data-open-related="${escapeAttribute(resolvePayload)}" type="button">${escapeHtml(item.title)}</button>`;
+
+  return `
+    <article class="recommendation-card ${localPaper ? "local-recommendation" : ""}">
+      <span class="recommendation-rank">R${index + 1}</span>
+      <h4>${title}</h4>
+      <p>${escapeHtml(item.reason || item.source || "基于本地标签、标题和摘要相似度推荐。")}</p>
+      <div class="recommendation-actions">
+        ${stationAction}
+        ${sourceAction}
+      </div>
+      ${item.score ? `<small>相似分：${escapeHtml(item.score)}</small>` : ""}
+    </article>
+  `;
+}
+
+async function openRelatedPaper(rawPayload) {
+  if (!rawPayload) return;
+  const payload = parseRecommendationPayload(rawPayload);
+  let paper = payload.paper_id ? state.papers.find((item) => item.arxiv_id === payload.paper_id) : null;
+  if (!paper) {
+    paper = findLocalPaperForRecommendation(payload);
+  }
+  if (!paper) {
+    try {
+      const params = new URLSearchParams();
+      if (payload.paper_id) params.set("paper_id", payload.paper_id);
+      if (payload.title) params.set("title", payload.title);
+      if (payload.url) params.set("url", payload.url);
+      const data = await getJson(`/api/papers/resolve?${params.toString()}`);
+      paper = data.paper;
+      const index = state.papers.findIndex((item) => item.arxiv_id === paper.arxiv_id);
+      if (index >= 0) {
+        state.papers[index] = paper;
+      } else {
+        state.papers.unshift(paper);
+      }
+    } catch (error) {
+      showMessage("这篇推荐论文还没有收录到本地库，暂时只能打开出处。", true);
+      return;
+    }
+  }
+  const current = state.papers.find((item) => item.arxiv_id === state.selectedId);
+  if (current) {
+    pushDetailHistory({
+      label: "返回推荐列表",
+      relatedPreviewId: null,
+      scrollTarget: "recommendationSpotlight",
+    });
+    current.relatedPreview = paper;
+  }
+  render();
+  scrollToDetailTarget("relatedSummaryPreview");
+  showMessage(`已展开推荐论文总结：${paper.title}`);
+}
+
+function promoteRelatedPaper(paperId) {
+  const paper = state.papers.find((item) => item.arxiv_id === paperId);
+  if (!paper) return;
+  pushDetailHistory({
+    label: "返回原论文推荐列表",
+    relatedPreviewId: null,
+    scrollTarget: "recommendationSpotlight",
+  });
+  state.selectedId = paperId;
+  state.activeView = "library";
+  state.keyword = "";
+  el.searchInput.value = "";
+  selectNav("library");
+  render();
+  if (el.paperDetail) el.paperDetail.scrollTop = 0;
+  showMessage(`已切换为当前论文：${paper.title}`);
+}
+
+function closeRelatedPreview() {
+  const current = state.papers.find((item) => item.arxiv_id === state.selectedId);
+  if (current) current.relatedPreview = null;
+  render();
+}
+
+function returnToRecommendationList() {
+  const current = state.papers.find((item) => item.arxiv_id === state.selectedId);
+  if (current) current.relatedPreview = null;
+  render();
+  scrollToDetailTarget("recommendationSpotlight");
+}
+
+function pushDetailHistory(options = {}) {
+  if (!state.selectedId) return;
+  const current = state.papers.find((item) => item.arxiv_id === state.selectedId);
+  const relatedPreviewId = Object.prototype.hasOwnProperty.call(options, "relatedPreviewId")
+    ? options.relatedPreviewId
+    : current?.relatedPreview?.arxiv_id || null;
+  state.detailHistory.push({
+    selectedId: state.selectedId,
+    activeView: state.activeView,
+    keyword: state.keyword,
+    detailScrollTop: el.paperDetail?.scrollTop || 0,
+    relatedPreviewId,
+    scrollTarget: options.scrollTarget || "",
+    label: options.label || "",
+  });
+  if (state.detailHistory.length > 20) {
+    state.detailHistory.shift();
+  }
+}
+
+function restoreDetailHistory() {
+  const previous = state.detailHistory.pop();
+  if (!previous) return;
+  state.selectedId = previous.selectedId;
+  state.activeView = previous.activeView || "library";
+  state.keyword = previous.keyword || "";
+  el.searchInput.value = state.keyword;
+  selectNav(state.activeView);
+
+  const paper = state.papers.find((item) => item.arxiv_id === previous.selectedId);
+  if (paper) {
+    paper.relatedPreview = previous.relatedPreviewId
+      ? state.papers.find((item) => item.arxiv_id === previous.relatedPreviewId) || null
+      : null;
+  }
+
+  render();
+  if (previous.scrollTarget) {
+    scrollToDetailTarget(previous.scrollTarget);
+  } else if (el.paperDetail) {
+    window.setTimeout(() => {
+      el.paperDetail.scrollTop = previous.detailScrollTop || 0;
+    }, 0);
+  }
+}
+
+function scrollToDetailTarget(targetId) {
+  window.setTimeout(() => {
+    document.querySelector(`#${targetId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+}
+
+function findLocalPaperForRecommendation(item) {
+  if (item.paper_id) {
+    const byId = state.papers.find((paper) => paper.arxiv_id === item.paper_id);
+    if (byId) return byId;
+  }
+  const itemUrl = String(item.url || "").trim();
+  if (itemUrl) {
+    const byUrl = state.papers.find((paper) => paper.entry_url === itemUrl || paper.pdf_url === itemUrl);
+    if (byUrl) return byUrl;
+  }
+  const itemTitle = normalizePaperTitle(item.title);
+  if (!itemTitle) return null;
+  return state.papers.find((paper) => {
+    const paperTitle = normalizePaperTitle(paper.title);
+    return paperTitle === itemTitle || titlesLookSimilar(paperTitle, itemTitle);
+  }) || null;
+}
+
+function recommendationResolvePayload(item, localPaper) {
+  return JSON.stringify({
+    paper_id: localPaper?.arxiv_id || item.paper_id || "",
+    title: item.title || "",
+    url: item.url || "",
+  });
+}
+
+function parseRecommendationPayload(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      paper_id: String(parsed.paper_id || ""),
+      title: String(parsed.title || ""),
+      url: String(parsed.url || ""),
+    };
+  } catch (error) {
+    return { paper_id: String(value || ""), title: "", url: "" };
+  }
+}
+
+function renderRelatedSummaryPreview(paper) {
+  if (!paper) return "";
+  const summary = paper.summary || {};
+  return `
+    <section id="relatedSummaryPreview" class="related-summary-preview">
+      <div class="spotlight-heading">
+        <div>
+          <h3>推荐论文站内总结</h3>
+          <p>这里直接展示推荐论文的站内信息，不会跳到外部网页。</p>
+        </div>
+        <button class="recommendation-link" data-close-related-preview type="button">收起</button>
+      </div>
+      <h4>${escapeHtml(paper.title)}</h4>
+      <div class="paper-meta">
+        <span>${escapeHtml(sourceLabel[paper.source] || paper.source || "未知来源")}</span>
+        <span>${escapeHtml((paper.published || "").slice(0, 10) || "未知日期")}</span>
+        <span>引用 ${paper.citation_count || 0}</span>
+      </div>
+      <div class="tag-row">
+        <span class="tag priority-${summary.reading_priority || "medium"}">${escapeHtml(priorityLabel[summary.reading_priority] || summary.reading_priority || "中优先级")}</span>
+        ${(paper.tags || summary.method_tags || []).slice(0, 6).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
+      </div>
+      <div class="related-summary-grid">
+        <section>
+          <h5>摘要速览</h5>
+          <p>${escapeHtml(summary.short_summary || paper.abstract || "暂无摘要。")}</p>
+        </section>
+        <section>
+          <h5>相关性判断</h5>
+          <p>${escapeHtml(summary.relevance || "暂无相关性判断。")}</p>
+        </section>
+      </div>
+      <section class="related-summary-points">
+        <h5>关键要点</h5>
+        ${renderListItems((summary.key_points || []).slice(0, 5))}
+      </section>
+      ${summary.deep_summary ? `
+        <section class="related-summary-points">
+          <h5>深度解读</h5>
+          <p>${escapeHtml(summary.deep_summary)}</p>
+        </section>
+      ` : ""}
+      <div class="recommendation-actions">
+        <button class="recommendation-link" data-return-recommendations type="button">返回推荐列表</button>
+        <button class="recommendation-link primary" data-promote-related="${escapeAttribute(paper.arxiv_id)}" type="button">作为当前论文打开</button>
+        ${paper.entry_url ? `<a class="recommendation-link" href="${escapeAttribute(paper.entry_url)}" target="_blank" rel="noopener">打开出处</a>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function normalizePaperTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/在线\s*\(?\d*\)?/g, "")
+    .replace(/\bpdf\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titlesLookSimilar(left, right) {
+  if (!left || !right) return false;
+  const shorter = left.length < right.length ? left : right;
+  const longer = left.length < right.length ? right : left;
+  if (shorter.length >= 24 && longer.includes(shorter)) return true;
+  const leftWords = new Set(left.split(" ").filter((word) => word.length > 3));
+  const rightWords = right.split(" ").filter((word) => word.length > 3);
+  if (!leftWords.size || !rightWords.length) return false;
+  const overlap = rightWords.filter((word) => leftWords.has(word)).length;
+  return overlap >= Math.min(6, Math.ceil(rightWords.length * 0.72));
+}
+
+function renderInnovationAdvice(items = []) {
+  if (!items.length) return "";
+  return `
+    <section class="innovation-advice">
+      <div class="spotlight-heading">
+        <div>
+          <h3>基于上传论文和推荐论文的创新建议</h3>
+          <p>这是系统给你的研究切入点，不是最终结论，建议再结合正文实验和导师方向筛选。</p>
+        </div>
+      </div>
+      <div class="advice-list">
+        ${items.map((item, index) => `
+          <article class="advice-card">
+            <span class="recommendation-rank">I${index + 1}</span>
+            <h4>${escapeHtml(item.title)}</h4>
+            <p><strong>为什么值得做：</strong>${escapeHtml(item.why)}</p>
+            <p><strong>可以怎么做：</strong>${escapeHtml(item.how)}</p>
+            ${(item.evidence || []).length ? `<div class="tag-row">${item.evidence.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderReportPanel(lastReport) {
   el.paperDetail.className = "paper-detail";
   const reportUrl = lastReport?.url || "/reports/papers.md";
   el.paperDetail.innerHTML = `
     <h2 class="detail-title">阅读报告</h2>
-    <p class="panel-note">这里会把当前论文库整理成 Markdown 阅读清单，包含优先级、中文摘要、关键要点和深度解读字段。</p>
+    <p class="panel-note">这里会把当前论文库整理成 Markdown 阅读清单，包含优先级、中文摘要、关键要点、创新点和深度解读字段。</p>
     <div class="report-actions">
       <button data-report-action="export" type="button">重新生成报告</button>
       <a href="${escapeAttribute(reportUrl)}" target="_blank" rel="noopener">打开最近报告</a>
@@ -708,9 +1830,16 @@ function renderDeepSummary(summary) {
   ].filter(([, value]) => value);
 
   return `
-    <section class="detail-block">
-      <h3>LLM 深度解读 ${summary.llm_model ? `<span class="paper-meta">${escapeHtml(summary.llm_model)}</span>` : ""}</h3>
-      ${rows.map(([title, value]) => `<p><strong>${escapeHtml(title)}：</strong>${escapeHtml(value)}</p>`).join("")}
+    <section class="detail-block deep-reading-block">
+      <h3>${summary.llm_model ? "LLM 深度解读" : "深度解读"} ${summary.llm_model ? `<span class="paper-meta">${escapeHtml(summary.llm_model)}</span>` : ""}</h3>
+      <div class="deep-reading-grid">
+        ${rows.map(([title, value]) => `
+          <article class="deep-reading-card">
+            <h4>${escapeHtml(title)}</h4>
+            <p>${escapeHtml(value)}</p>
+          </article>
+        `).join("")}
+      </div>
     </section>
     ${renderOptionalListBlock("核心创新点", summary.innovation_points)}
     ${renderExperimentBlock(summary)}
@@ -748,7 +1877,13 @@ function renderListItems(items = []) {
 function updatePaper(paper) {
   const index = state.papers.findIndex((item) => item.arxiv_id === paper.arxiv_id);
   if (index >= 0) {
-    state.papers[index] = paper;
+    state.papers[index] = {
+      ...paper,
+      related: state.papers[index].related,
+      relatedPreview: state.papers[index].relatedPreview,
+      innovationAdvice: state.papers[index].innovationAdvice,
+      expertChat: state.papers[index].expertChat,
+    };
   }
   render();
 }
@@ -808,13 +1943,19 @@ function showMessage(text, isError = false) {
 
 function setBusy(isBusy) {
   document.body.classList.toggle("loading", isBusy);
-  [el.addPaperButton, el.collectButton, el.exportButton, el.refreshButton].forEach((button) => {
+  [el.addPaperButton, el.uploadPaperButton, el.collectButton, el.exportButton, el.refreshButton].forEach((button) => {
     button.disabled = isBusy;
   });
 }
 
 function selectedSources() {
   return Array.from(document.querySelectorAll('input[name="source"]:checked')).map((input) => input.value);
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number.parseInt(value, 10);
+  if (Number.isNaN(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }
 
 function debounce(fn, delay) {

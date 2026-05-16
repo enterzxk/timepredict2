@@ -36,7 +36,38 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(decode_summary(row).reading_priority, "high")
             store.close()
 
+    def test_find_paper_by_title_or_url_handles_upload_suffix(self):
+        with TemporaryDirectory() as temp_dir:
+            store = PaperStore(Path(temp_dir) / "papers.sqlite3")
+            paper = Paper(
+                arxiv_id="paper-1",
+                title="Business Process Remaining Time Prediction Based on Incremental Event Logs 在线(1)",
+                abstract="Remaining time prediction for process mining.",
+                authors=["A. Researcher"],
+                published="2025-01-01T00:00:00Z",
+                updated="2025-01-01T00:00:00Z",
+                entry_url="https://example.com/paper",
+                pdf_url="",
+                categories=[],
+            )
+            summary = PaperSummary(
+                short_summary="Summary",
+                key_points=["Point"],
+                method_tags=["Process mining"],
+                relevance="Relevant",
+                reading_priority="high",
+            )
+            store.upsert_paper(paper, summary)
+
+            by_title = store.find_paper_by_title_or_url(
+                title="Business Process Remaining Time Prediction Based on Incremental Event Logs"
+            )
+            by_url = store.find_paper_by_title_or_url(url="https://example.com/paper")
+
+            self.assertEqual(by_title["arxiv_id"], "paper-1")
+            self.assertEqual(by_url["arxiv_id"], "paper-1")
+            store.close()
+
 
 if __name__ == "__main__":
     unittest.main()
-

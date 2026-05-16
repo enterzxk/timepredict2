@@ -1,0 +1,944 @@
+{
+  "date": "2026-05-16",
+  "topic": "人工智能、深度学习、机器学习、LLM、计算机视觉、NLP、强化学习",
+  "from_cache": false,
+  "items": [
+    {
+      "rank": 1,
+      "score": 92.6,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "AAAI",
+        "引用 13",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、AAAI、引用 13，来源于 AAAI Conference on Artificial Intelligence。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:2508.06206",
+        "title": "Affordance-R1: Reinforcement Learning for Generalizable Affordance Reasoning in Multimodal Large Language Model",
+        "abstract": "Affordance grounding focuses on predicting the specific regions of objects that are associated with the actions to be performed by robots. It plays a vital role in the fields of human-robot interaction, human-object interaction, embodied manipulation, and embodied perception. Existing models often neglect the affordance shared among different objects because they lack the Chain-of-Thought(CoT) reasoning abilities, limiting their out-of-domain generalization and explicit reasoning capabilities. To address these challenges, we propose Affordance-R1, the first unified affordance grounding framework that integrates cognitive CoT guided Group Relative Policy Optimization (GRPO) within a reinforcement learning paradigm. Specifically, we designed a sophisticated affordance function, which contains format, perception, and cognition rewards to effectively guide optimization directions. Furthermore, we constructed a high-quality affordance-centric reasoning dataset, ReasonAff, to support training. Trained exclusively via reinforcement learning with GRPO and without explicit reasoning data, Affordance-R1 achieves robust zero-shot generalization and exhibits emergent test-time reasoning capabilities. Comprehensive experiments demonstrate that our model outperforms well-established methods and exhibits open-world generalization.",
+        "authors": [
+          "Hanqing Wang",
+          "Shaoyang Wang",
+          "Yiming Zhong",
+          "Zemin Yang",
+          "Jiamin Wang",
+          "Zhiqing Cui",
+          "Jiahao Yuan",
+          "Yifan Han",
+          "Mingyu Liu",
+          "Yuexin Ma"
+        ],
+        "published": "2025-08-08",
+        "updated": "2025-08-08",
+        "entry_url": "https://www.semanticscholar.org/paper/cd3e98eceb49fd2d63926efa62efee1e1aa5a517",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“Affordance-R1: Reinforcement Learning for Generalizable Affordance Reasoning in Multimodal Large Language Model”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Benchmark。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Benchmark，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：To address these challenges, we propose Affordance-R1, the first unified affordance grounding framework that integrates cognitive CoT guided Group Relative Policy Optimization (GRPO) within a reinforcement learning paradigm.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：Comprehensive experiments demonstrate that our model outperforms well-established methods and exhibits open-world generalization.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：Comprehensive experiments demonstrate that our model outperforms well-established methods and exhibits open-world generalization.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Benchmark"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "high",
+          "topic_tags": [
+            "Benchmark",
+            "CCF-A",
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "AAAI",
+            "引用 13",
+            "2025 新近论文"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Benchmark。摘要中提到的具体方法/模型包括：ReasonAff, CoT, Affordance, Chain-of-Thought, Optimization。摘要中的关键描述：To address these challenges, we propose Affordance-R1, the first unified affordance grounding framework that integrates cognitive CoT guided Group Relative Policy Optimization (GRPO) within a reinforcement learning paradigm.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及ReasonAff, CoT, Affordance等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Benchmark。关键描述：To address these challenges, we propose Affordance-R1, the first unified affordance grounding framework that integrates cognitive CoT guided Group Relative Policy Optimization (GRPO) within a reinforcement learning paradigm.",
+          "experiments": "实验结果显示方法有效。实验描述：Comprehensive experiments demonstrate that our model outperforms well-established methods and exhibits open-world generalization.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "cd3e98eceb49fd2d63926efa62efee1e1aa5a517",
+        "doi": "10.48550/arXiv.2508.06206",
+        "venue": "AAAI Conference on Artificial Intelligence",
+        "year": 2025,
+        "citation_count": 13,
+        "reference_count": 48,
+        "influential_citation_count": 0,
+        "fields_of_study": [
+          "Computer Science"
+        ],
+        "tags": [
+          "Benchmark",
+          "CCF-A",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "AAAI",
+          "引用 13",
+          "2025 新近论文"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 2,
+      "score": 58.6,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "引用 13",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、引用 13、2025 新近论文，来源于 Chemistry of Materials。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:2503.22962",
+        "title": "Multimodal machine learning with large language embedding model for polymer property prediction",
+        "abstract": "Contemporary large language models (LLMs), such as GPT-4 and Llama, have harnessed extensive computational power and diverse text corpora to achieve remarkable proficiency in interpreting and generating domain-specific content, including materials science. To leverage the domain knowledge embedded within these models, we propose a simple yet effective multimodal architecture, PolyLLMem, which integrates text embeddings generated by Llama 3 with molecular structure embeddings derived from Uni-Mol, for polymer properties prediction tasks. In our model, Low-rank adaptation (LoRA) layers were also incorporated during the property prediction tasks to refine the embeddings based on our limited polymer dataset, thereby enhancing their chemical relevance for polymer SMILES representation. This balanced fusion of fine-tuned textual and structural information enables PolyLLMem to accurately predict a variety of polymer properties despite the scarcity of training data. Its performance is comparable to, and in some cases exceeds, that of graph-based models, as well as transformer-based models that typically require pretraining on millions of polymer samples. These findings demonstrate that LLM, such as Llama, can effectively capture chemical information encoded in polymer PSMILES, and underscore the efficacy of multimodal fusion of LLM embeddings and molecular structure embeddings in overcoming data scarcity and accelerating the discovery of advanced polymeric materials.",
+        "authors": [
+          "Tianren Zhang",
+          "Dai-Bei Yang"
+        ],
+        "published": "2025-03-29",
+        "updated": "2025-03-29",
+        "entry_url": "https://www.semanticscholar.org/paper/a848b6a4560429a243a587b1c0dae9cac76f4c1e",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“Multimodal machine learning with large language embedding model for polymer property prediction”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Transformer、Benchmark、Representation learning。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Transformer, Benchmark, Representation learning，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：To leverage the domain knowledge embedded within these models, we propose a simple yet effective multimodal architecture, PolyLLMem, which integrates text embeddings generated by Llama 3 with molecular structure embeddings derived from Uni-Mol, for polymer properties prediction tasks.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：In our model, Low-rank adaptation (LoRA) layers were also incorporated during the property prediction tasks to refine the embeddings based on our limited polymer dataset, thereby enhancing their chemical relevance for polymer SMILES representation.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：Contemporary large language models (LLMs), such as GPT-4 and Llama, have harnessed extensive computational power and diverse text corpora to achieve remarkable proficiency in interpreting and generating domain-specific content, including materials science.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Transformer",
+            "Benchmark",
+            "Representation learning"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Foundation model",
+            "Transformer",
+            "Benchmark",
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "引用 13",
+            "2025 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Transformer、Benchmark、Representation learning。摘要中提到的具体方法/模型包括：GPT-4, Contemporary, LLMs, PSMILES, LLM。摘要中的关键描述：To leverage the domain knowledge embedded within these models, we propose a simple yet effective multimodal architecture, PolyLLMem, which integrates text embeddings generated by Llama 3 with molecular structure embeddings derived from Uni-Mol, for polymer properties prediction tasks.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及GPT-4, Contemporary, LLMs等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Transformer、Benchmark、Representation learning。关键描述：To leverage the domain knowledge embedded within these models, we propose a simple yet effective multimodal architecture, PolyLLMem, which integrates text embeddings generated by Llama 3 with molecular structure embeddings derived from Uni-Mol, for polymer properties prediction tasks.",
+          "experiments": "实验结果显示方法有效。实验描述：In our model, Low-rank adaptation (LoRA) layers were also incorporated during the property prediction tasks to refine the embeddings based on our limited polymer dataset, thereby enhancing their chemical relevance for polymer SMILES representation.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "a848b6a4560429a243a587b1c0dae9cac76f4c1e",
+        "doi": "10.1021/acs.chemmater.5c00940",
+        "venue": "Chemistry of Materials",
+        "year": 2025,
+        "citation_count": 13,
+        "reference_count": 50,
+        "influential_citation_count": 0,
+        "fields_of_study": [
+          "Computer Science",
+          "Physics"
+        ],
+        "tags": [
+          "Transformer",
+          "Benchmark",
+          "Representation learning",
+          "Foundation model",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "引用 13",
+          "2025 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 3,
+      "score": 57.1,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "引用 37",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、引用 37、2025 新近论文，来源于 Medical Image Anal.。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:2501.11347",
+        "title": "EndoChat: Grounded Multimodal Large Language Model for Endoscopic Surgery",
+        "abstract": "Recently, Multimodal Large Language Models (MLLMs) have demonstrated their immense potential in computer-aided diagnosis and decision-making. In the context of robotic-assisted surgery, MLLMs can serve as effective tools for surgical training and guidance. However, there is still a deficiency of MLLMs specialized for surgical scene understanding in endoscopic procedures. To this end, we present EndoChat, an MLLM tailored to address various dialogue paradigms and subtasks in understanding endoscopic procedures. To train our EndoChat, we construct the Surg-396K dataset through a novel pipeline that systematically extracts surgical information and generates structured annotations based on large-scale endoscopic surgery datasets. Furthermore, we introduce a multi-scale visual token interaction mechanism and a visual contrast-based reasoning mechanism to enhance the model's representation learning and reasoning capabilities. Our model achieves state-of-the-art performance across five dialogue paradigms and seven surgical scene understanding tasks. Additionally, we conduct evaluations with professional surgeons, who provide positive feedback on the majority of conversation cases generated by EndoChat. Overall, these results demonstrate that EndoChat has the potential to advance training and automation in robotic-assisted surgery. Our dataset and model are publicly available at https://github.com/gkw0010/EndoChat.",
+        "authors": [
+          "Guan-Feng Wang",
+          "Long Bai",
+          "Junyi Wang",
+          "Kun Yuan",
+          "Zhen Li",
+          "Tianxu Jiang",
+          "Xiting He",
+          "Jinlin Wu",
+          "Zhen Chen",
+          "Zhen Lei",
+          "Hongbin Liu",
+          "Jiazheng Wang",
+          "Fan Zhang",
+          "N. Padoy",
+          "N. Navab",
+          "Hongliang Ren"
+        ],
+        "published": "2025-01-20",
+        "updated": "2025-01-20",
+        "entry_url": "https://www.semanticscholar.org/paper/b7d91325e7b012a6efb37f9fd58d6a38c482f3a5",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“EndoChat: Grounded Multimodal Large Language Model for Endoscopic Surgery”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Benchmark、Representation learning。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Benchmark, Representation learning，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：Furthermore, we introduce a multi-scale visual token interaction mechanism and a visual contrast-based reasoning mechanism to enhance the model's representation learning and reasoning capabilities.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：To train our EndoChat, we construct the Surg-396K dataset through a novel pipeline that systematically extracts surgical information and generates structured annotations based on large-scale endoscopic surgery datasets.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：Our model achieves state-of-the-art performance across five dialogue paradigms and seven surgical scene understanding tasks.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Benchmark",
+            "Representation learning"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Benchmark",
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "引用 37",
+            "2025 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Benchmark、Representation learning。摘要中提到的具体方法/模型包括：However, MLLMs, Multimodal, Large, Models。摘要中的关键描述：Furthermore, we introduce a multi-scale visual token interaction mechanism and a visual contrast-based reasoning mechanism to enhance the model's representation learning and reasoning capabilities.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及However, MLLMs, Multimodal等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Benchmark、Representation learning。关键描述：Furthermore, we introduce a multi-scale visual token interaction mechanism and a visual contrast-based reasoning mechanism to enhance the model's representation learning and reasoning capabilities.",
+          "experiments": "实验结果显示方法有效。实验描述：To train our EndoChat, we construct the Surg-396K dataset through a novel pipeline that systematically extracts surgical information and generates structured annotations based on large-scale endoscopic surgery datasets.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "b7d91325e7b012a6efb37f9fd58d6a38c482f3a5",
+        "doi": "10.48550/arXiv.2501.11347",
+        "venue": "Medical Image Anal.",
+        "year": 2025,
+        "citation_count": 37,
+        "reference_count": 56,
+        "influential_citation_count": 0,
+        "fields_of_study": [
+          "Computer Science",
+          "Medicine"
+        ],
+        "tags": [
+          "Benchmark",
+          "Representation learning",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "引用 37",
+          "2025 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 4,
+      "score": 54.9,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "引用 15",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、引用 15、2025 新近论文，来源于 Frontiers in Medicine。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:067c3fdd66b83b9747ce8ef8b271c942de2ba80b",
+        "title": "Enhancing gastroenterology with multimodal learning: the role of large language model chatbots in digestive endoscopy",
+        "abstract": "Introduction Advancements in artificial intelligence (AI) and large language models (LLMs) have the potential to revolutionize digestive endoscopy by enhancing diagnostic accuracy, improving procedural efficiency, and supporting clinical decision-making. Traditional AI-assisted endoscopic systems often rely on single-modal image analysis, which lacks contextual understanding and adaptability to complex gastrointestinal (GI) conditions. Moreover, existing methods struggle with domain shifts, data heterogeneity, and interpretability, limiting their clinical applicability. Methods To address these challenges, we propose a multimodal learning framework that integrates LLM-powered chatbots with endoscopic imaging and patient-specific medical data. Our approach employs self-supervised learning to extract clinically relevant patterns from heterogeneous sources, enabling real-time guidance and AI-assisted report generation. We introduce a domain-adaptive learning strategy to enhance model generalization across diverse patient populations and imaging conditions. Results and discussion Experimental results on multiple GI datasets demonstrate that our method significantly improves lesion detection, reduces diagnostic variability, and enhances physician-AI collaboration. This study highlights the potential of multimodal LLM-based systems in advancing gastroenterology by providing interpretable, context-aware, and adaptable AI support in digestive endoscopy.",
+        "authors": [
+          "Yuanyuan Qin",
+          "Jianming Chang",
+          "Li Li",
+          "Mianhua Wu"
+        ],
+        "published": "2025-05-21",
+        "updated": "2025-05-21",
+        "entry_url": "https://www.semanticscholar.org/paper/067c3fdd66b83b9747ce8ef8b271c942de2ba80b",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“Enhancing gastroenterology with multimodal learning: the role of large language model chatbots in digestive endoscopy”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括General time-series method。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是General time-series method，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：Methods To address these challenges, we propose a multimodal learning framework that integrates LLM-powered chatbots with endoscopic imaging and patient-specific medical data.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：Results and discussion Experimental results on multiple GI datasets demonstrate that our method significantly improves lesion detection, reduces diagnostic variability, and enhances physician-AI collaboration.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：Results and discussion Experimental results on multiple GI datasets demonstrate that our method significantly improves lesion detection, reduces diagnostic variability, and enhances physician-AI collaboration.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "General time-series method"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Benchmark",
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "引用 15",
+            "2025 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在General time-series method。摘要中提到的具体方法/模型包括：Introduction, LLMs, Traditional, LLM, Moreover。摘要中的关键描述：Methods To address these challenges, we propose a multimodal learning framework that integrates LLM-powered chatbots with endoscopic imaging and patient-specific medical data.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及Introduction, LLMs, Traditional等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及General time-series method。关键描述：Methods To address these challenges, we propose a multimodal learning framework that integrates LLM-powered chatbots with endoscopic imaging and patient-specific medical data.",
+          "experiments": "实验结果显示方法有效。实验描述：Results and discussion Experimental results on multiple GI datasets demonstrate that our method significantly improves lesion detection, reduces diagnostic variability, and enhances physician-AI collaboration.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "067c3fdd66b83b9747ce8ef8b271c942de2ba80b",
+        "doi": "10.3389/fmed.2025.1583514",
+        "venue": "Frontiers in Medicine",
+        "year": 2025,
+        "citation_count": 15,
+        "reference_count": 50,
+        "influential_citation_count": 0,
+        "fields_of_study": [
+          "Medicine"
+        ],
+        "tags": [
+          "General time-series method",
+          "Benchmark",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "引用 15",
+          "2025 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 5,
+      "score": 53.6,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "引用 7",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、引用 7、2025 新近论文，来源于 arXiv.org。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:2503.01887",
+        "title": "When Continue Learning Meets Multimodal Large Language Model: A Survey",
+        "abstract": "Recent advancements in Artificial Intelligence have led to the development of Multimodal Large Language Models (MLLMs). However, adapting these pre-trained models to dynamic data distributions and various tasks efficiently remains a challenge. Fine-tuning MLLMs for specific tasks often causes performance degradation in the model's prior knowledge domain, a problem known as 'Catastrophic Forgetting'. While this issue has been well-studied in the Continual Learning (CL) community, it presents new challenges for MLLMs. This review paper, the first of its kind in MLLM continual learning, presents an overview and analysis of 440 research papers in this area.The review is structured into four sections. First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields. Second, it categorizes and overviews the latest studies on continual learning, divided into three parts: non-large language models unimodal continual learning (Non-LLM Unimodal CL), non-large language models multimodal continual learning (Non-LLM Multimodal CL), and continual learning in large language models (CL in LLM). The third section provides a detailed analysis of the current state of MLLM continual learning research, including benchmark evaluations, architectural innovations, and a summary of theoretical and empirical studies.Finally, the paper discusses the challenges and future directions of continual learning in MLLMs, aiming to inspire future research and development in the field. This review connects the foundational concepts, theoretical insights, method innovations, and practical applications of continual learning for multimodal large models, providing a comprehensive understanding of the research progress and challenges in this field, aiming to inspire researchers in the field and promote the advancement of related technologies.",
+        "authors": [
+          "Yukang Huo",
+          "Hao Tang"
+        ],
+        "published": "2025-02-27",
+        "updated": "2025-02-27",
+        "entry_url": "https://www.semanticscholar.org/paper/7c20e2c7a2ba02ddafee858c88ddc27c54e00b37",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“When Continue Learning Meets Multimodal Large Language Model: A Survey”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Foundation model、Benchmark。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Foundation model, Benchmark，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Foundation model",
+            "Benchmark"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Probabilistic forecasting",
+            "Foundation model",
+            "Benchmark",
+            "Incremental learning",
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "引用 7",
+            "2025 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Foundation model、Benchmark。摘要中提到的具体方法/模型包括：LLM, MLLMs, Multimodal, Artificial, Finally。摘要中的关键描述：First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及LLM, MLLMs, Multimodal等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Foundation model、Benchmark。关键描述：First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields.",
+          "experiments": "实验结果显示方法有效。实验描述：First, it discusses the latest research on MLLMs, covering model innovations, benchmarks, and applications in various fields.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "7c20e2c7a2ba02ddafee858c88ddc27c54e00b37",
+        "doi": "10.48550/arXiv.2503.01887",
+        "venue": "arXiv.org",
+        "year": 2025,
+        "citation_count": 7,
+        "reference_count": 0,
+        "influential_citation_count": 0,
+        "fields_of_study": [
+          "Computer Science"
+        ],
+        "tags": [
+          "Foundation model",
+          "Benchmark",
+          "Probabilistic forecasting",
+          "Incremental learning",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "引用 7",
+          "2025 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 6,
+      "score": 48.0,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "引用 1",
+        "2025 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、引用 1、2025 新近论文，来源于 International Conference Control and Robots。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "s2:21dfdfd3da2bc002c305ed7ae0c476c4af674252",
+        "title": "Recognizing Phishing in Emails by Using Natural Language Processing & Machine Learning Techniques",
+        "abstract": "Phishing emails can often get past regular rule-based security protections using well-designed social tricks. PhishNet is a new way to detect phishing using NLP and ML technologies; it accurately differentiates between email threats and safe (ham) emails. It finds and highlights important elements from emails by studying the text, headers and embedded links, aided by TF-IDF, mRMR-based methods and ensemble learning. With training on SpamAssassin and HamSpam, PhishNet attains excellent results and accuracy of 98.8% using ML modeling and Voting Ensemble, scoring ROC-AUC higher than 0.99. Even though CNN and LSTM are good at learning, they need more computational resources. It is made accessible to users via a slim, real-time web app built with Flask which lets them select among permutation models. It was confirmed via experiments that, along with strong preprocessing, using ensemble learning improves generalization and reduces the number of false positives. The project not only evaluates leading methods for phishing detection but also creates a workable, scalable and active application that fills a need for AI - based email security systems against modern cyber threats. We are showing that different ensemble approach outperforms others result.",
+        "authors": [
+          "Nadhim Abid Mohammed",
+          "M. Al-Hitawi",
+          "A. Alsabhany",
+          "Ahmed Hadi Ali AL-Jumaili",
+          "Mohammed A. Al-shibly",
+          "Omar D. Madeeh",
+          "Yaseen Hadi Ali",
+          "Omar Salah F. Shareef"
+        ],
+        "published": "2025-07-03",
+        "updated": "2025-07-03",
+        "entry_url": "https://www.semanticscholar.org/paper/21dfdfd3da2bc002c305ed7ae0c476c4af674252",
+        "pdf_url": "",
+        "categories": [],
+        "summary": {
+          "short_summary": "这篇论文关注“Recognizing Phishing in Emails by Using Natural Language Processing & Machine Learning Techniques”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括General time-series method。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是General time-series method，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：It finds and highlights important elements from emails by studying the text, headers and embedded links, aided by TF-IDF, mRMR-based methods and ensemble learning.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：It was confirmed via experiments that, along with strong preprocessing, using ensemble learning improves generalization and reduces the number of false positives.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：We are showing that different ensemble approach outperforms others result.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "General time-series method"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "source:semantic_scholar",
+            "每日推荐",
+            "AI/深度学习主题",
+            "引用 1",
+            "2025 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在General time-series method。摘要中提到的具体方法/模型包括：Phishing, TF-IDF, SpamAssassin, CNN, Voting。摘要中的关键描述：It finds and highlights important elements from emails by studying the text, headers and embedded links, aided by TF-IDF, mRMR-based methods and ensemble learning.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及Phishing, TF-IDF, SpamAssassin等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及General time-series method。关键描述：It finds and highlights important elements from emails by studying the text, headers and embedded links, aided by TF-IDF, mRMR-based methods and ensemble learning.",
+          "experiments": "实验结果显示方法有效。实验描述：It was confirmed via experiments that, along with strong preprocessing, using ensemble learning improves generalization and reduces the number of false positives.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "semantic_scholar",
+        "source_id": "21dfdfd3da2bc002c305ed7ae0c476c4af674252",
+        "doi": "10.1109/ICCR67387.2025.11292212",
+        "venue": "International Conference Control and Robots",
+        "year": 2025,
+        "citation_count": 1,
+        "reference_count": 54,
+        "influential_citation_count": 0,
+        "fields_of_study": [],
+        "tags": [
+          "General time-series method",
+          "source:semantic_scholar",
+          "每日推荐",
+          "AI/深度学习主题",
+          "引用 1",
+          "2025 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 7,
+      "score": 46.0,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "2026 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、2026 新近论文、摘要完整。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "2605.15179v1",
+        "title": "Eradicating Negative Transfer in Multi-Physics Foundation Models via Sparse Mixture-of-Experts Routing",
+        "abstract": "Scaling Scientific Machine Learning (SciML) toward universal foundation models is bottlenecked by negative transfer: the simultaneous co-training of disparate partial differential equation (PDE) regimes can induce gradient conflict, unstable optimization, and plasticity loss in dense neural operators. In particular, broadband open-channel fluid dynamics and boundary-dominated porous media flows impose incompatible spectral and geometric demands on a single dense parameter path. We introduce Shodh-MoE, a sparse-activated latent transformer architecture for multi-physics transport. Shodh-MoE operates on compressed 16^3 physical latents produced by a physics-informed autoencoder with an intra-tokenizer Helmholtz-style velocity parameterization, restricting decoded states to divergence-free velocity manifolds. The model guarantees exact mass conservation, achieving a physically verifiable velocity divergence of ~2.8 x 10^-10 (evaluated post-hoc in FP64) on 128^3 grids. A Top-1 soft-semantic router dynamically assigns localized latent patches to expert subnetworks, enabling specialized parameter paths for distinct physical mechanisms while preserving shared experts for universal symmetries. In a 20,000-step distributed pretraining run over mixed three-dimensional physical tensors, routing telemetry shows autonomous domain bifurcation: held-out validation tokens from the open-channel domain route exclusively to Expert 0, while porous-media tokens route exclusively to Expert 1. The model converges simultaneously across both regimes, achieving latent validation MSEs of 2.46 x 10^-5 and 9.76 x 10^-6, and decoded physical MSEs of 2.48 x 10^-6 and 1.76 x 10^-6. These results support sparse expert routing as a practical architectural mechanism for mitigating multi-physics interference in universal neural operators.\n\nAuthor comment: 5 pages, 4 figures",
+        "authors": [
+          "Ellwil Sharma",
+          "Arastu Sharma"
+        ],
+        "published": "2026-05-14T17:58:15Z",
+        "updated": "2026-05-14T17:58:15Z",
+        "entry_url": "http://arxiv.org/abs/2605.15179v1",
+        "pdf_url": "https://arxiv.org/pdf/2605.15179v1",
+        "categories": [
+          "cs.LG",
+          "cs.AI",
+          "physics.comp-ph"
+        ],
+        "summary": {
+          "short_summary": "这篇论文关注“Eradicating Negative Transfer in Multi-Physics Foundation Models via Sparse Mixture-of-Experts Routing”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Transformer。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Transformer，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：We introduce Shodh-MoE, a sparse-activated latent transformer architecture for multi-physics transport.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Transformer"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Foundation model",
+            "Transformer",
+            "source:arxiv",
+            "每日推荐",
+            "AI/深度学习主题",
+            "2026 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Transformer。摘要中提到的具体方法/模型包括：Machine, Learning, Shodh-MoE, Scientific, Expert。摘要中的关键描述：We introduce Shodh-MoE, a sparse-activated latent transformer architecture for multi-physics transport.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及Machine, Learning, Shodh-MoE等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Transformer。关键描述：We introduce Shodh-MoE, a sparse-activated latent transformer architecture for multi-physics transport.",
+          "experiments": "实验结果显示方法有效。",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "arxiv",
+        "source_id": "2605.15179v1",
+        "doi": "",
+        "venue": "",
+        "year": null,
+        "citation_count": 0,
+        "reference_count": 0,
+        "influential_citation_count": 0,
+        "fields_of_study": [],
+        "tags": [
+          "Transformer",
+          "Foundation model",
+          "source:arxiv",
+          "每日推荐",
+          "AI/深度学习主题",
+          "2026 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 8,
+      "score": 42.0,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "2026 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、2026 新近论文、摘要完整。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "2605.15190v1",
+        "title": "RAVEN: Real-time Autoregressive Video Extrapolation with Consistency-model GRPO",
+        "abstract": "Causal autoregressive video diffusion models support real-time streaming generation by extrapolating future chunks from previously generated content. Distilling such generators from high-fidelity bidirectional teachers yields competitive few-step models, yet a persistent gap between the history distributions encountered during training and those arising at inference constrains generation quality over long horizons. We introduce the Real-time Autoregressive Video Extrapolation Network (RAVEN), a training-time test framework that repacks each self rollout into an interleaved sequence of clean historical endpoints and noisy denoising states. This formulation aligns training attention with inference-time extrapolation and allows downstream chunk losses to supervise the history representations on which future predictions depend. We further propose Consistency-model Group Relative Policy Optimization (CM-GRPO), which reformulates a consistency sampling step as a conditional Gaussian transition and applies online Reinforcement Learning (RL) directly to this kernel, avoiding the Euler-Maruyama auxiliary process adopted in prior flow-model RL formulations. Experiments demonstrate that RAVEN surpasses recent causal video distillation baselines across quality, semantic, and dynamic degree evaluations, and that CM-GRPO provides further gains when combined with RAVEN.\n\nAuthor comment: Project Page: https://yanzuo.lu/raven",
+        "authors": [
+          "Yanzuo Lu",
+          "Ronglai Zuo",
+          "Jiankang Deng"
+        ],
+        "published": "2026-05-14T17:59:30Z",
+        "updated": "2026-05-14T17:59:30Z",
+        "entry_url": "http://arxiv.org/abs/2605.15190v1",
+        "pdf_url": "https://arxiv.org/pdf/2605.15190v1",
+        "categories": [
+          "cs.CV"
+        ],
+        "summary": {
+          "short_summary": "这篇论文关注“RAVEN: Real-time Autoregressive Video Extrapolation with Consistency-model GRPO”。从摘要看，它的核心问题是长预测步长下的时间序列预测，主要方法线索包括Transformer、Diffusion。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决长预测步长下的时间序列预测，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Transformer, Diffusion，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：We introduce the Real-time Autoregressive Video Extrapolation Network (RAVEN), a training-time test framework that repacks each self rollout into an interleaved sequence of clean historical endpoints and noisy denoising states.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：Experiments demonstrate that RAVEN surpasses recent causal video distillation baselines across quality, semantic, and dynamic degree evaluations, and that CM-GRPO provides further gains when combined with RAVEN.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Transformer",
+            "Diffusion"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Long-term forecasting",
+            "Probabilistic forecasting",
+            "Transformer",
+            "Diffusion",
+            "Benchmark",
+            "Incremental learning",
+            "source:arxiv",
+            "每日推荐",
+            "AI/深度学习主题",
+            "2026 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于长预测步长下的时间序列预测。技术重点集中在Transformer、Diffusion。摘要中提到的具体方法/模型包括：Real-time, Euler-Maruyama, Author, Gaussian, RAVEN。摘要中的关键描述：We introduce the Real-time Autoregressive Video Extrapolation Network (RAVEN), a training-time test framework that repacks each self rollout into an interleaved sequence of clean historical endpoints and noisy denoising states.",
+          "contribution": "围绕长预测步长下的时间序列预测提出新的建模方案；涉及Real-time, Euler-Maruyama, Author等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Transformer、Diffusion。关键描述：We introduce the Real-time Autoregressive Video Extrapolation Network (RAVEN), a training-time test framework that repacks each self rollout into an interleaved sequence of clean historical endpoints and noisy denoising states.",
+          "experiments": "实验结果显示方法有效。实验描述：Experiments demonstrate that RAVEN surpasses recent causal video distillation baselines across quality, semantic, and dynamic degree evaluations, and that CM-GRPO provides further gains when combined with RAVEN.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及长预测步长下的时间序列预测，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "arxiv",
+        "source_id": "2605.15190v1",
+        "doi": "",
+        "venue": "",
+        "year": null,
+        "citation_count": 0,
+        "reference_count": 0,
+        "influential_citation_count": 0,
+        "fields_of_study": [],
+        "tags": [
+          "Transformer",
+          "Diffusion",
+          "Long-term forecasting",
+          "Probabilistic forecasting",
+          "Benchmark",
+          "Incremental learning",
+          "source:arxiv",
+          "每日推荐",
+          "AI/深度学习主题",
+          "2026 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 9,
+      "score": 42.0,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "2026 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、2026 新近论文、摘要完整。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "2605.15178v1",
+        "title": "SANA-WM: Efficient Minute-Scale World Modeling with Hybrid Linear Diffusion Transformer",
+        "abstract": "We introduce SANA-WM, an efficient 2.6B-parameter open-source world model natively trained for one-minute generation, synthesizing high-fidelity, 720p, minute-scale videos with precise camera control. SANA-WM achieves visual quality comparable to large-scale industrial baselines such as LingBot-World and HY-WorldPlay, while significantly improving efficiency. Four core designs drive our architecture: (1) Hybrid Linear Attention combines frame-wise Gated DeltaNet (GDN) with softmax attention for memory-efficient long-context modeling. (2) Dual-Branch Camera Control ensures precise 6-DoF trajectory adherence. (3) Two-Stage Generation Pipeline applies a long-video refiner to stage-1 outputs, improving quality and consistency across sequences. (4) Robust Annotation Pipeline extracts accurate metric-scale 6-DoF camera poses from public videos to yield high-quality, spatiotemporally consistent action labels. Driven by these designs, SANA-WMdemonstrates remarkable efficiency across data, training compute, and inference hardware: it uses only $\\sim$213K public video clips with metric-scale pose supervision, completes training in 15 days on 64 H100s, and generates each 60s clip on a single GPU; its distilled variant can be deployed on a single RTX 5090 with NVFP4 quantization to denoise a 60s 720p clip in 34s. On our one-minute world-model benchmark, SANA-WM demonstrates stronger action-following accuracy than prior open-source baselines and achieves comparable visual quality at $36\\times$ higher throughput for scalable world modeling.\n\nAuthor comment: https://nvlabs.github.io/Sana/WM/",
+        "authors": [
+          "Haoyi Zhu",
+          "Haozhe Liu",
+          "Yuyang Zhao",
+          "Tian Ye",
+          "Junsong Chen",
+          "Jincheng Yu",
+          "Tong He",
+          "Song Han",
+          "Enze Xie"
+        ],
+        "published": "2026-05-14T17:58:03Z",
+        "updated": "2026-05-14T17:58:03Z",
+        "entry_url": "http://arxiv.org/abs/2605.15178v1",
+        "pdf_url": "https://arxiv.org/pdf/2605.15178v1",
+        "categories": [
+          "cs.CV"
+        ],
+        "summary": {
+          "short_summary": "这篇论文关注“SANA-WM: Efficient Minute-Scale World Modeling with Hybrid Linear Diffusion Transformer”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Transformer、Diffusion、Benchmark。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Transformer, Diffusion, Benchmark，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：We introduce SANA-WM, an efficient 2.6B-parameter open-source world model natively trained for one-minute generation, synthesizing high-fidelity, 720p, minute-scale videos with precise camera control.",
+            "实验设计：论文使用公开数据集或基准任务验证方法效果，重点应核对数据规模、评价指标、对比基线和消融实验。原文线索是：On our one-minute world-model benchmark, SANA-WM demonstrates stronger action-following accuracy than prior open-source baselines and achieves comparable visual quality at $36\\times$ higher throughput for scalable world modeling.",
+            "结果解读：摘要声称方法相对基线有提升，阅读正文时需要确认提升幅度是否稳定、是否来自关键模块，以及是否有统计或消融支撑。原文线索是：On our one-minute world-model benchmark, SANA-WM demonstrates stronger action-following accuracy than prior open-source baselines and achieves comparable visual quality at $36\\times$ higher throughput for scalable world modeling.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Transformer",
+            "Diffusion",
+            "Benchmark"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Transformer",
+            "Diffusion",
+            "Benchmark",
+            "Spatio-temporal",
+            "source:arxiv",
+            "每日推荐",
+            "AI/深度学习主题",
+            "2026 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Transformer、Diffusion、Benchmark。摘要中提到的具体方法/模型包括：Annotation, Linear, Driven, Pipeline, Author。摘要中的关键描述：We introduce SANA-WM, an efficient 2.6B-parameter open-source world model natively trained for one-minute generation, synthesizing high-fidelity, 720p, minute-scale videos with precise camera control.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及Annotation, Linear, Driven等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Transformer、Diffusion、Benchmark。关键描述：We introduce SANA-WM, an efficient 2.6B-parameter open-source world model natively trained for one-minute generation, synthesizing high-fidelity, 720p, minute-scale videos with precise camera control.",
+          "experiments": "实验结果显示方法有效。实验描述：On our one-minute world-model benchmark, SANA-WM demonstrates stronger action-following accuracy than prior open-source baselines and achieves comparable visual quality at $36\\times$ higher throughput for scalable world modeling.",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "arxiv",
+        "source_id": "2605.15178v1",
+        "doi": "",
+        "venue": "",
+        "year": null,
+        "citation_count": 0,
+        "reference_count": 0,
+        "influential_citation_count": 0,
+        "fields_of_study": [],
+        "tags": [
+          "Transformer",
+          "Diffusion",
+          "Benchmark",
+          "Spatio-temporal",
+          "source:arxiv",
+          "每日推荐",
+          "AI/深度学习主题",
+          "2026 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    },
+    {
+      "rank": 10,
+      "score": 42.0,
+      "quality_signals": [
+        "AI/深度学习主题",
+        "2026 新近论文",
+        "摘要完整"
+      ],
+      "reason": "质量排序命中：AI/深度学习主题、2026 新近论文、摘要完整。适合作为今天优先浏览的 AI/深度学习论文。",
+      "paper": {
+        "arxiv_id": "2605.15172v1",
+        "title": "MetaBackdoor: Exploiting Positional Encoding as a Backdoor Attack Surface in LLMs",
+        "abstract": "Backdoor attacks pose a serious security threat to large language models (LLMs), which are increasingly deployed as general-purpose assistants in safety- and privacy-critical applications. Existing LLM backdoors rely primarily on content-based triggers, requiring explicit modification of the input text. In this work, we show that this assumption is unnecessary and limiting. We introduce MetaBackdoor, a new class of backdoor attacks that exploits positional information as the trigger, without modifying textual content. Our key insight is that Transformer-based LLMs necessarily encode token positions to process ordered sequences. As a result, length-correlated positional structure is reflected in the model's internal computation and can be used as an effective non-content trigger signal. We demonstrate that even a simple length-based positional trigger is sufficient to activate stealthy backdoors. Unlike prior attacks, MetaBackdoor operates on visibly and semantically clean inputs and enables qualitatively new capabilities. We show that a backdoored LLM can be induced to disclose sensitive internal information, including proprietary system prompts, once a length condition is satisfied. We further demonstrate a self-activation scenario, where normal multi-turn interaction can move the conversation context into the trigger region and induce malicious tool-call behavior without attacker-supplied trigger text. In addition, MetaBackdoor is orthogonal to content-based backdoors and can be composed with them to create more precise and harder-to-detect activation conditions. Our results expand the threat model of LLM backdoors by revealing positional encoding as a previously overlooked attack surface. This challenges defenses that focus on detecting suspicious text and highlights the need for new defense strategies that explicitly account for positional triggers in modern LLM architectures.",
+        "authors": [
+          "Rui Wen",
+          "Mark Russinovich",
+          "Andrew Paverd",
+          "Jun Sakuma",
+          "Ahmed Salem"
+        ],
+        "published": "2026-05-14T17:56:22Z",
+        "updated": "2026-05-14T17:56:22Z",
+        "entry_url": "http://arxiv.org/abs/2605.15172v1",
+        "pdf_url": "https://arxiv.org/pdf/2605.15172v1",
+        "categories": [
+          "cs.CR",
+          "cs.CL"
+        ],
+        "summary": {
+          "short_summary": "这篇论文关注“MetaBackdoor: Exploiting Positional Encoding as a Backdoor Attack Surface in LLMs”。从摘要看，它的核心问题是时间序列预测或时序建模，主要方法线索包括Transformer。阅读时可以重点看作者如何定义预测目标、如何把模型输出转化为可评估的结果，以及实验是否证明这种设计比基线更可靠。",
+          "key_points": [
+            "研究问题：论文试图解决时间序列预测或时序建模，重点不只是预测数值本身，也包括预测结果如何服务后续判断或决策。",
+            "方法主线：摘要中出现的关键技术标签是Transformer，说明论文大概率围绕模型结构、表示学习或不确定性估计展开。",
+            "方法细节：论文提出或组合了一个模型流程，用预测偏差、异常信号或多任务表示来形成最终判断。原文线索是：Backdoor attacks pose a serious security threat to large language models (LLMs), which are increasingly deployed as general-purpose assistants in safety- and privacy-critical applications.",
+            "阅读重点：建议先看问题定义和数据构造，再看模型结构，最后核对实验指标、消融实验和失败案例。"
+          ],
+          "method_tags": [
+            "Transformer"
+          ],
+          "relevance": "相关性较弱，建议只在标题或方法方向与你的研究问题匹配时阅读。",
+          "reading_priority": "low",
+          "topic_tags": [
+            "Transformer",
+            "source:arxiv",
+            "每日推荐",
+            "AI/深度学习主题",
+            "2026 新近论文",
+            "摘要完整"
+          ],
+          "deep_summary": "这篇论文聚焦于时间序列预测或时序建模。技术重点集中在Transformer。摘要中提到的具体方法/模型包括：LLMs, Transformer-based, Unlike, LLM, Backdoor。摘要中的关键描述：Backdoor attacks pose a serious security threat to large language models (LLMs), which are increasingly deployed as general-purpose assistants in safety- and privacy-critical applications.",
+          "contribution": "围绕时间序列预测或时序建模提出新的建模方案；涉及LLMs, Transformer-based, Unlike等具体技术；通过实验验证方法有效性",
+          "method": "方法层面涉及Transformer。关键描述：Backdoor attacks pose a serious security threat to large language models (LLMs), which are increasingly deployed as general-purpose assistants in safety- and privacy-critical applications.",
+          "experiments": "实验结果显示方法有效。",
+          "limitations": "仅凭摘要无法判断数据规模和跨场景泛化能力，建议阅读正文实验部分。",
+          "reading_notes": "建议先看问题定义和方法描述，再核对实验结果。如果你的研究方向涉及时间序列预测或时序建模，这篇论文值得细读。",
+          "llm_model": "",
+          "llm_error": "",
+          "innovation_points": [],
+          "method_comparison": "",
+          "datasets_used": [],
+          "metrics_used": [],
+          "future_directions": ""
+        },
+        "source": "arxiv",
+        "source_id": "2605.15172v1",
+        "doi": "",
+        "venue": "",
+        "year": null,
+        "citation_count": 0,
+        "reference_count": 0,
+        "influential_citation_count": 0,
+        "fields_of_study": [],
+        "tags": [
+          "Transformer",
+          "source:arxiv",
+          "每日推荐",
+          "AI/深度学习主题",
+          "2026 新近论文",
+          "摘要完整"
+        ],
+        "local_pdf_path": "",
+        "citations": [],
+        "references": [],
+        "related": []
+      }
+    }
+  ],
+  "errors": []
+}

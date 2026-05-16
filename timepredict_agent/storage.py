@@ -165,6 +165,39 @@ class PaperStore:
         )
         return list(cursor.fetchall())
 
+    def find_paper_by_title_or_url(self, title: str = "", url: str = "") -> sqlite3.Row | None:
+        normalized_title = _normalize_title(title)
+        if url:
+            cursor = self.connection.execute(
+                "SELECT * FROM papers WHERE entry_url = ? OR pdf_url = ? LIMIT 1",
+                (url, url),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                return row
+        if not normalized_title:
+            return None
+        for row in self.list_papers(500):
+            if _normalize_title(row["title"]) == normalized_title:
+                return row
+        words = [word for word in normalized_title.split() if len(word) > 3]
+        if not words:
+            return None
+        best_row = None
+        best_score = 0
+        word_set = set(words)
+        for row in self.list_papers(500):
+            candidate = _normalize_title(row["title"])
+            candidate_words = set(word for word in candidate.split() if len(word) > 3)
+            if normalized_title in candidate or candidate in normalized_title:
+                return row
+            score = len(word_set & candidate_words)
+            if score > best_score:
+                best_score = score
+                best_row = row
+        threshold = min(6, max(3, int(len(words) * 0.72)))
+        return best_row if best_score >= threshold else None
+
     def _init_schema(self) -> None:
         self.connection.execute(
             """
@@ -240,3 +273,13 @@ def _merge_tags(*groups: list[str]) -> list[str]:
                 seen.add(tag)
                 result.append(tag)
     return result
+
+
+def _normalize_title(value: str) -> str:
+    import re
+
+    text = str(value or "").lower()
+    text = re.sub(r"在线\s*\(?\d*\)?", " ", text)
+    text = re.sub(r"\bpdf\b", " ", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()

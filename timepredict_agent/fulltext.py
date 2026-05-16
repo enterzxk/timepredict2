@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError
+import logging
 import re
 import ssl
 
@@ -49,7 +50,7 @@ class PdfTextExtractor:
         try:
             import pymupdf
         except ImportError:
-            return ""
+            return self._extract_with_pypdf(pdf_path, max_chars)
         try:
             doc = pymupdf.open(str(pdf_path))
             pages_text = []
@@ -59,6 +60,26 @@ class PdfTextExtractor:
             raw_text = "\n".join(pages_text)
             cleaned = self._clean_text(raw_text)
             return cleaned[:max_chars]
+        except Exception:
+            fallback = self._extract_with_pypdf(pdf_path, max_chars)
+            if fallback:
+                return fallback
+            return ""
+
+    def _extract_with_pypdf(self, pdf_path: Path, max_chars: int) -> str:
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            return ""
+        try:
+            logging.getLogger("pypdf").setLevel(logging.CRITICAL)
+            reader = PdfReader(str(pdf_path))
+            pages_text = []
+            for page in reader.pages:
+                pages_text.append(page.extract_text() or "")
+                if sum(len(item) for item in pages_text) >= max_chars * 1.2:
+                    break
+            return self._clean_text("\n".join(pages_text))[:max_chars]
         except Exception:
             return ""
 

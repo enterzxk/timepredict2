@@ -42,8 +42,9 @@ class AnthropicSummaryClient:
             "max_tokens": _safe_max_tokens(),
             "temperature": 0.2,
             "system": (
-                "你是时间序列预测、业务过程预测、事件序列建模方向的研究助理。"
-                "请用简体中文帮助研究者深入理解论文。"
+                "你是人工智能、深度学习、多模态大模型、强化学习、时间序列预测和业务过程预测方向的研究助理。"
+                "请先根据论文标题和摘要判断真实研究领域，再用简体中文帮助研究者深入理解论文。"
+                "不要把不属于时间序列/流程预测的论文硬套进时间序列模板。"
                 "你的目标不是翻译摘要，而是帮助读者理解：论文要解决什么问题、为什么重要、方法怎么做、实验说明了什么、有什么局限、该不该精读。"
                 "优先严格输出 JSON；如果无法输出 JSON，也必须给出完整中文讲解。"
                 "不要输出思考过程，不要输出推理草稿，只输出最终答案。"
@@ -55,7 +56,7 @@ class AnthropicSummaryClient:
                 }
             ],
         }
-        response = _post_json(f"{self.base_url}/v1/messages", payload, self.token)
+        response = self._post_messages(payload)
         text = _message_text(response)
         parsed = _extract_json(text)
         return _merge_summary(current, parsed, self.model)
@@ -81,11 +82,62 @@ class AnthropicSummaryClient:
                 }
             ],
         }
-        response = _post_json(f"{self.base_url}/v1/messages", payload, self.token)
+        response = self._post_messages(payload)
         text = _message_text(response)
         if not text:
             raise RuntimeError("LLM 返回为空。")
         return text.strip()
+
+    def answer_paper_question(
+        self,
+        paper: Paper,
+        summary: PaperSummary,
+        pdf_text: str,
+        question: str,
+        repositories: list[dict] | None = None,
+        history: list[dict] | None = None,
+    ) -> str:
+        if not self.available():
+            raise RuntimeError("未检测到 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY。")
+
+        payload = {
+            "model": self.model,
+            "max_tokens": _safe_max_tokens(),
+            "temperature": 0.2,
+            "system": (
+                "你是深度学习和人工智能论文导师。请用简体中文回答用户关于单篇论文的问题。"
+                "回答要能让用户不翻正文也尽量理解论文：必须解释方法思想、具体流程、创新点、与已有方法对比、实验设计和结果含义。"
+                "只根据给定论文信息和 GitHub 仓库信息作答；信息缺失时明确说缺失，不要编造指标、数据集或结论。"
+                "不要输出思考过程。"
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _build_expert_prompt(paper, summary, pdf_text, question, repositories or [], history or []),
+                }
+            ],
+        }
+        response = self._post_messages(payload)
+        text = _message_text(response)
+        if not text:
+            raise RuntimeError("LLM 返回为空。")
+        return text.strip()
+
+    def _post_messages(self, anthropic_payload: dict) -> dict:
+        if _uses_openai_chat_format(self.base_url):
+            payload = _to_openai_chat_payload(anthropic_payload)
+            return _post_json(
+                _join_endpoint(self.base_url, "chat/completions"),
+                payload,
+                self.token,
+                api_format="openai",
+            )
+        return _post_json(
+            _join_endpoint(self.base_url, "v1/messages"),
+            anthropic_payload,
+            self.token,
+            api_format="anthropic",
+        )
 
 
 def _build_prompt(paper: Paper, current: PaperSummary, pdf_text: str = "") -> str:
@@ -94,7 +146,9 @@ def _build_prompt(paper: Paper, current: PaperSummary, pdf_text: str = "") -> st
     if pdf_text:
         pdf_section = f"\n\n论文全文（前 15000 字符）：\n{pdf_text[:15000]}"
     return f"""
-请阅读下面的论文元数据和摘要，生成适合时间序列预测、业务过程预测、事件序列建模研究者阅读的中文深度解读。
+请阅读下面的论文元数据和摘要，先判断它真实属于哪个研究方向，再生成中文深度解读。
+
+如果论文属于多模态大模型、LLM、强化学习、计算机视觉、NLP、机器人、可供性推理等方向，请按这些方向解释；不要强行写成时间序列预测或业务过程预测论文。
 
 你的目标不是翻译摘要，而是帮助读者理解：论文要解决什么问题、为什么重要、方法怎么做、实验说明了什么、有什么局限、该不该精读。
 
@@ -110,7 +164,7 @@ JSON 字段如下：
 - key_points: 6-10 个关键要点数组，每个要点应该是一个具体的技术点或发现
 - method_tags: 3-8 个英文方法标签数组
 - topic_tags: 3-8 个英文主题标签数组
-- relevance: 详细说明它和时间序列预测/业务过程预测研究的关系，以及对后续研究的启发
+- relevance: 详细说明它和用户研究方向的关系。如果它不是时间序列/流程预测论文，要明确说明“直接关系不强”，同时指出它作为 AI/深度学习方法背景的启发
 - reading_priority: high / medium / low
 - deep_summary: 500-800 字中文深度总结，需要涵盖问题定义、方法思路、关键创新、实验结论
 - contribution: 详细列出主要贡献，每个贡献点单独说明
@@ -169,16 +223,116 @@ def _build_review_prompt(papers: list[dict], topic: str) -> str:
 """.strip()
 
 
-def _post_json(url: str, payload: dict, token: str) -> dict:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = {
-        "content-type": "application/json",
-        "x-api-key": token,
-        "anthropic-version": ANTHROPIC_VERSION,
-        "User-Agent": "timepredict-agent/0.3",
+def _build_expert_prompt(
+    paper: Paper,
+    summary: PaperSummary,
+    pdf_text: str,
+    question: str,
+    repositories: list[dict],
+    history: list[dict] | None = None,
+) -> str:
+    authors = ", ".join(paper.authors[:8])
+    repo_lines = []
+    for repo in repositories[:6]:
+        repo_lines.append(
+            "- {name} | {url} | {language} | stars={stars} | {description} | {reason}".format(
+                name=repo.get("full_name", ""),
+                url=repo.get("html_url", ""),
+                language=repo.get("language", ""),
+                stars=repo.get("stars", 0),
+                description=repo.get("description", ""),
+                reason=repo.get("reason", ""),
+            )
+        )
+    pdf_section = f"\n\n全文片段（前 18000 字符）：\n{pdf_text[:18000]}" if pdf_text else ""
+    history_lines = []
+    for turn in (history or [])[-6:]:
+        user_text = str(turn.get("question") or "").strip()
+        answer_text = str(turn.get("answer") or "").strip()
+        if user_text:
+            history_lines.append(f"用户：{user_text}")
+        if answer_text:
+            history_lines.append(f"专家：{answer_text[:800]}")
+    history_section = f"\n\n最近对话：\n{chr(10).join(history_lines)}" if history_lines else ""
+    return f"""
+用户问题：{question}
+
+请按下面结构回答：
+1. 先用 2-3 句话回答用户最关心的问题。
+2. 方法思想：解释这篇论文想解决什么问题、核心直觉是什么。
+3. 具体怎么做：按输入、模型/模块、训练目标、推理流程拆开讲。
+4. 创新点：逐条说明相对已有方法哪里不同。
+5. 对比实验和结果：说明数据集、指标、基线、主要结果、消融或泛化结论；缺失就明确写“当前材料未提供”。
+6. GitHub/复现建议：如果给了仓库，说明每个仓库可能能参考什么；不要保证它一定是官方代码，除非信息里能证明。
+7. 读者建议：告诉用户是否值得细读、重点看哪些部分。
+
+论文标题：{paper.title}
+作者：{authors}
+来源：{paper.source}
+发表时间：{paper.published}
+venue：{paper.venue}
+摘要：{paper.abstract}
+
+已有中文解读：
+短摘要：{summary.short_summary}
+关键要点：{"；".join(summary.key_points)}
+方法标签：{", ".join(summary.method_tags)}
+主题标签：{", ".join(summary.topic_tags)}
+深度总结：{summary.deep_summary}
+主要贡献：{summary.contribution}
+方法拆解：{summary.method}
+创新点：{"；".join(summary.innovation_points)}
+方法对比：{summary.method_comparison}
+实验结论：{summary.experiments}
+数据集：{", ".join(summary.datasets_used)}
+评价指标：{", ".join(summary.metrics_used)}
+局限：{summary.limitations}
+
+GitHub 候选仓库：
+{chr(10).join(repo_lines) if repo_lines else "未检索到或用户未要求检索。"}{history_section}{pdf_section}
+""".strip()
+
+
+def _uses_openai_chat_format(base_url: str) -> bool:
+    lowered = str(base_url or "").rstrip("/").lower()
+    if "api.deepseek.com" in lowered and not lowered.endswith("/anthropic"):
+        return True
+    return bool(environ.get("OPENAI_API_KEY") and "api.openai.com" in lowered)
+
+
+def _join_endpoint(base_url: str, endpoint: str) -> str:
+    return f"{str(base_url).rstrip('/')}/{endpoint.lstrip('/')}"
+
+
+def _to_openai_chat_payload(anthropic_payload: dict) -> dict:
+    messages = []
+    system = str(anthropic_payload.get("system") or "").strip()
+    if system:
+        messages.append({"role": "system", "content": system})
+    for message in anthropic_payload.get("messages") or []:
+        role = message.get("role") or "user"
+        content = message.get("content") or ""
+        messages.append({"role": role, "content": content})
+    payload = {
+        "model": anthropic_payload.get("model"),
+        "messages": messages,
+        "temperature": anthropic_payload.get("temperature", 0.2),
+        "max_tokens": anthropic_payload.get("max_tokens", _safe_max_tokens()),
+        "stream": False,
     }
-    if "api.anthropic.com" not in url:
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _post_json(url: str, payload: dict, token: str, api_format: str = "anthropic") -> dict:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = {"content-type": "application/json", "User-Agent": "timepredict-agent/0.4"}
+    if api_format == "openai":
         headers["authorization"] = f"Bearer {token}"
+    else:
+        headers["x-api-key"] = token
+        headers["anthropic-version"] = ANTHROPIC_VERSION
+        if "api.anthropic.com" not in url:
+            headers["authorization"] = f"Bearer {token}"
     request = Request(url, data=body, headers=headers, method="POST")
     try:
         with urlopen(request, timeout=90) as response:
@@ -194,12 +348,20 @@ def _post_json(url: str, payload: dict, token: str) -> dict:
             with urlopen(request, timeout=90, context=context) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (URLError, TimeoutError) as retry_exc:
-            return _post_json_with_curl(url, payload, token, retry_exc)
+            return _post_json_with_curl(url, payload, token, retry_exc, api_format=api_format)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"LLM 返回不是合法 JSON：{exc}") from exc
 
 
 def _message_text(response: dict) -> str:
+    choices = response.get("choices") or []
+    if choices:
+        first = choices[0] or {}
+        message = first.get("message") or {}
+        if message.get("content"):
+            return str(message["content"]).strip()
+        if first.get("text"):
+            return str(first["text"]).strip()
     if isinstance(response.get("content"), str):
         return response["content"].strip()
     if response.get("completion"):
@@ -210,28 +372,40 @@ def _message_text(response: dict) -> str:
     return "\n".join(part.get("text", "") for part in parts if part.get("type") == "text").strip()
 
 
-def _post_json_with_curl(url: str, payload: dict, token: str, cause: Exception) -> dict:
+def _post_json_with_curl(
+    url: str,
+    payload: dict,
+    token: str,
+    cause: Exception,
+    api_format: str = "anthropic",
+) -> dict:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     temp_name = ""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp:
             temp.write(body)
             temp_name = temp.name
+        headers = [
+            "content-type: application/json",
+        ]
+        if api_format == "openai":
+            headers.append(f"authorization: Bearer {token}")
+        else:
+            headers.extend(
+                [
+                    f"anthropic-version: {ANTHROPIC_VERSION}",
+                    f"x-api-key: {token}",
+                    f"authorization: Bearer {token}",
+                ]
+            )
         command = [
             "curl.exe",
             "-sS",
             url,
-            "-H",
-            "content-type: application/json",
-            "-H",
-            f"anthropic-version: {ANTHROPIC_VERSION}",
-            "-H",
-            f"x-api-key: {token}",
-            "-H",
-            f"authorization: Bearer {token}",
-            "--data-binary",
-            f"@{temp_name}",
         ]
+        for header in headers:
+            command.extend(["-H", header])
+        command.extend(["--data-binary", f"@{temp_name}"])
         completed = subprocess.run(
             command,
             capture_output=True,

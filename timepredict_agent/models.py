@@ -62,6 +62,7 @@ class RelatedPaper:
     url: str
     reason: str
     score: float = 0.0
+    paper_id: str = ""
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+import cgi
+import io
 import json
 import mimetypes
 
@@ -37,6 +39,12 @@ def _make_handler(config: AgentConfig):
                 parsed = urlparse(self.path)
                 if parsed.path == "/api/papers":
                     self._handle_list(parsed.query)
+                    return
+                if parsed.path == "/api/papers/resolve":
+                    self._handle_resolve_paper(parsed.query)
+                    return
+                if parsed.path == "/api/daily-recommendations":
+                    self._handle_daily_recommendations(parsed.query)
                     return
                 if parsed.path.startswith("/api/papers/"):
                     self._handle_show(unquote(parsed.path.rsplit("/", 1)[-1]))
@@ -78,6 +86,9 @@ def _make_handler(config: AgentConfig):
                 if parsed.path == "/api/papers/manual":
                     self._handle_manual_paper()
                     return
+                if parsed.path == "/api/papers/upload":
+                    self._handle_upload_paper()
+                    return
                 if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/download"):
                     paper_id = unquote(parsed.path.split("/")[-2])
                     self._handle_download(paper_id)
@@ -89,6 +100,14 @@ def _make_handler(config: AgentConfig):
                 if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/recommend"):
                     paper_id = unquote(parsed.path.split("/")[-2])
                     self._handle_recommend(paper_id)
+                    return
+                if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/innovation-advice"):
+                    paper_id = unquote(parsed.path.split("/")[-2])
+                    self._handle_innovation_advice(paper_id)
+                    return
+                if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/expert-chat"):
+                    paper_id = unquote(parsed.path.split("/")[-2])
+                    self._handle_expert_chat(paper_id)
                     return
                 if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/llm-summary"):
                     paper_id = unquote(parsed.path.split("/")[-2])
@@ -134,6 +153,35 @@ def _make_handler(config: AgentConfig):
                     self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
                     return
                 self._send_json({"paper": _row_to_dict(row)})
+            finally:
+                agent.close()
+
+        def _handle_resolve_paper(self, query_string: str) -> None:
+            params = parse_qs(query_string)
+            paper_id = params.get("paper_id", [""])[0].strip()
+            title = params.get("title", [""])[0].strip()
+            url = params.get("url", [""])[0].strip()
+            agent = PaperAgent(config)
+            try:
+                row = agent.store.find_paper(paper_id) if paper_id else None
+                if row is None:
+                    row = agent.store.find_paper_by_title_or_url(title=title, url=url)
+                if row is None:
+                    self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
+                    return
+                self._send_json({"paper": _row_to_dict(row)})
+            finally:
+                agent.close()
+
+        def _handle_daily_recommendations(self, query_string: str) -> None:
+            params = parse_qs(query_string)
+            limit = _to_int(params.get("limit", ["10"])[0], 10)
+            force = params.get("force", ["0"])[0] in {"1", "true", "yes"}
+            agent = PaperAgent(config)
+            try:
+                self._send_json(agent.daily_recommendations(limit=limit, force=force))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_GATEWAY)
             finally:
                 agent.close()
 
@@ -208,6 +256,24 @@ def _make_handler(config: AgentConfig):
             finally:
                 agent.close()
 
+        def _handle_upload_paper(self) -> None:
+            try:
+                filename, content, payload = self._read_multipart_upload()
+                agent = PaperAgent(config)
+                try:
+                    result = agent.add_uploaded_paper(filename, content, payload)
+                finally:
+                    agent.close()
+                self._send_json(
+                    {
+                        "paper": _row_to_dict(result["paper"]),
+                        "related": result["related"],
+                        "pdf_text_available": result["pdf_text_available"],
+                    }
+                )
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
         def _handle_download(self, paper_id: str) -> None:
             agent = PaperAgent(config)
             try:
@@ -235,6 +301,39 @@ def _make_handler(config: AgentConfig):
             try:
                 related = agent.recommend_similar(paper_id, _to_int(payload.get("limit"), 8))
                 self._send_json({"related": related})
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_innovation_advice(self, paper_id: str) -> None:
+            payload = self._read_json()
+            agent = PaperAgent(config)
+            try:
+                result = agent.generate_innovation_advice(paper_id, _to_int(payload.get("limit"), 8))
+                self._send_json(result)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_expert_chat(self, paper_id: str) -> None:
+            payload = self._read_json()
+            question = str(payload.get("question") or "").strip()
+            if not question:
+                self._send_json({"error": "请输入想问论文专家的问题。"}, HTTPStatus.BAD_REQUEST)
+                return
+            agent = PaperAgent(config)
+            try:
+                result = agent.ask_paper_expert(
+                    paper_id,
+                    question,
+                    include_github=bool(payload.get("include_github", False)),
+                    github_limit=_to_int(payload.get("github_limit"), 5),
+                    prefer_llm=bool(payload.get("prefer_llm", True)),
+                    history=payload.get("history") if isinstance(payload.get("history"), list) else [],
+                )
+                self._send_json(result)
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
             finally:
@@ -308,6 +407,35 @@ def _make_handler(config: AgentConfig):
                 return {}
             raw = self.rfile.read(length).decode("utf-8")
             return json.loads(raw or "{}")
+
+        def _read_multipart_upload(self) -> tuple[str, bytes, dict]:
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.startswith("multipart/form-data"):
+                raise ValueError("请使用 multipart/form-data 上传 PDF。")
+            length = _to_int(self.headers.get("Content-Length"), 0)
+            if length <= 0:
+                raise ValueError("上传内容为空。")
+            body = self.rfile.read(length)
+            environ = {
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+                "CONTENT_LENGTH": str(length),
+            }
+            form = cgi.FieldStorage(
+                fp=io.BytesIO(body),
+                headers=self.headers,
+                environ=environ,
+                keep_blank_values=True,
+            )
+            file_item = form["file"] if "file" in form else None
+            if file_item is None or not getattr(file_item, "filename", ""):
+                raise ValueError("请选择要上传的 PDF 文件。")
+            content = file_item.file.read()
+            payload = {}
+            for key in ("title", "authors", "year", "abstract", "tags"):
+                if key in form:
+                    payload[key] = form.getvalue(key)
+            return file_item.filename, content, payload
 
         def _serve_static(self, path: str) -> None:
             relative = "index.html" if path in ("", "/") else path.lstrip("/")

@@ -22,6 +22,22 @@
             <span class="nav-icon" aria-hidden="true">▦</span>
             论文库
           </button>
+          <button class="nav-item" type="button" data-nav="triage">
+            <span class="nav-icon" aria-hidden="true">◇</span>
+            速筛看板
+          </button>
+          <button class="nav-item" type="button" data-nav="discovery">
+            <span class="nav-icon" aria-hidden="true">◎</span>
+            发现扩展
+          </button>
+          <button class="nav-item" type="button" data-nav="daily">
+            <span class="nav-icon" aria-hidden="true">✦</span>
+            每日推荐
+          </button>
+          <button class="nav-item" type="button" data-nav="expert">
+            <span class="nav-icon" aria-hidden="true">◈</span>
+            论文专家
+          </button>
           <button class="nav-item" type="button" data-nav="report">
             <span class="nav-icon" aria-hidden="true">⌁</span>
             阅读报告
@@ -79,14 +95,26 @@
       </aside>
 
       <main class="workspace">
+        <section class="workspace-intro">
+          <div>
+            <h2 id="viewTitle">论文库</h2>
+            <p id="viewSubtitle">先收集候选论文，再按相关性、方法标签、引用和解读完整度筛出值得精读的内容。</p>
+          </div>
+          <div class="workflow-steps" aria-label="阅读流程">
+            <span>发现</span>
+            <span>速筛</span>
+            <span>精读</span>
+            <span>报告</span>
+          </div>
+        </section>
         <header class="toolbar">
           <div class="search-box">
             <span aria-hidden="true">⌕</span>
-            <input id="searchInput" type="search" placeholder="搜索标题、摘要、方法标签" />
+            <input id="searchInput" type="search" placeholder="搜索本地论文；收集时也会作为检索关键词" />
           </div>
           <label class="number-field">
             数量
-            <input id="maxResults" type="number" min="1" max="200" value="80" />
+            <input id="maxResults" type="number" min="1" max="500" value="120" />
           </label>
           <label class="number-field">
             天数
@@ -95,6 +123,10 @@
           <button id="addPaperButton" class="secondary-button" type="button">
             <span aria-hidden="true">＋</span>
             添加已读
+          </button>
+          <button id="uploadPaperButton" class="secondary-button" type="button">
+            <span aria-hidden="true">⇧</span>
+            上传论文
           </button>
           <button id="collectButton" class="primary-button" type="button">
             <span aria-hidden="true">↻</span>
@@ -113,7 +145,7 @@
           </div>
           <div>
             <span id="highCount">0</span>
-            <p>高优先级</p>
+            <p>精读候选</p>
           </div>
           <div>
             <span id="methodCount">0</span>
@@ -127,12 +159,12 @@
 
         <div id="message" class="message" hidden></div>
 
-        <section class="content-grid">
+        <section id="contentGrid" class="content-grid">
           <div class="paper-panel">
             <div class="panel-heading">
               <div>
-                <h2>论文列表</h2>
-                <p>按发布时间倒序排列</p>
+                <h2 id="listTitle">论文列表</h2>
+                <p id="listSubtitle">按发布时间倒序排列</p>
               </div>
               <button id="refreshButton" class="icon-button" type="button" title="刷新列表">↺</button>
             </div>
