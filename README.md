@@ -15,6 +15,8 @@
 - Semantic Scholar 或本地标签相似论文推荐
 - 自动论文分类标签，包括方法标签、主题标签、来源标签和 CCF 会议等级标签
 - 增强流程挖掘方向：Predictive process monitoring、Remaining time prediction、Process mining、Incremental event log
+- **GitHub 代码仓库搜索**：根据论文内容自动搜索相关代码仓库（支持按关键词、方法名匹配）
+- **每日推荐**：基于阅读历史和偏好生成每日论文推荐列表
 - 定时任务循环更新论文库
 
 ## 快速开始
@@ -95,6 +97,8 @@ Web 界面支持：
 - 点击论文查看中文摘要、关键要点、相关性判断、作者和 PDF 链接
 - 下载论文全文 PDF
 - 补充引用关系和相似论文推荐
+- **GitHub 代码搜索**：为论文查找相关代码实现，支持一键跳转
+- **每日推荐**：查看个性化论文推荐，按相关性排序
 - 导出 Markdown 阅读报告
 - 勾选多篇论文后生成中文综述草稿，并保存到 `reports/literature_review.md`
 
@@ -203,6 +207,7 @@ timepredict_agent/
   fulltext.py       # PDF 下载
   tagger.py         # 论文分类标签
   scheduler.py      # 定时更新
+  github_search.py  # GitHub 代码仓库搜索
   web.py            # 本地 Web 服务
   static/           # 可视化操作台
 ```
@@ -213,6 +218,9 @@ timepredict_agent/
 - 增加更细的方向分类，例如 foundation model、probabilistic、process mining、anomaly detection
 - 增加批量 LLM 综述和跨论文对比报告
 - 增加更稳定的浏览器辅助导入流程
+- 优化每日推荐算法，支持基于阅读历史的个性化排序
+- 支持更多代码托管平台（GitLab、Bitbucket）
+- 添加论文笔记和标注功能
 
 ## 本地密钥文件
 
