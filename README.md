@@ -1,8 +1,41 @@
 # TimePredict Agent
 
-这是一个面向时间序列预测论文的本地自动化管理 agent。它可以从多个论文来源收集近两三年的论文，写入本地 SQLite 数据库，并生成便于阅读的中文论文速览和 Markdown 报告。
+这是一个面向时间序列预测论文的**完整 Agent 系统**。它具备规划、记忆、反思和多 Agent 协作能力，可以从多个论文来源收集近两三年的论文，写入本地 SQLite 数据库，并生成便于阅读的中文论文速览和 Markdown 报告。
 
-## 功能
+## 核心 Agent 能力
+
+### 1. 意图识别系统
+- 7 维意图识别：概念理解、方法分析、实验评估、创新点、对比分析、研究方向、代码实现
+- 自动理解用户问题类型，精准匹配回答策略
+
+### 2. 任务规划系统
+- 动态生成 5-8 步执行计划
+- 根据问题意图自动选择工具和步骤
+- 支持计划执行和状态追踪
+
+### 3. 多 Agent 协作
+- **Planner Agent**：任务规划和分解
+- **Reader Agent**：论文阅读和理解
+- **Code Agent**：GitHub 代码搜索
+- **Critic Agent**：自我反思和检查
+- **Tutor Agent**：答案生成和解释
+
+### 4. 自我反思机制
+- 自动检查回答是否覆盖问题
+- 检查是否有证据支持
+- 自动修复不完整的回答
+
+### 5. 记忆系统
+- 长期记忆存储（agent_memory）
+- 基于问题检索相关记忆
+- 支持记忆权重和更新
+
+### 6. 会话管理
+- 多轮对话支持
+- 历史会话持久化
+- 会话状态管理
+
+## 功能特性
 
 - 多源论文收集：arXiv、Semantic Scholar、OpenAlex、IEEE Xplore 公开检索/官方 API、Google Scholar HTML 导入
 - 过滤最近 N 天内的论文，默认近 1095 天
@@ -17,6 +50,7 @@
 - 增强流程挖掘方向：Predictive process monitoring、Remaining time prediction、Process mining、Incremental event log
 - **GitHub 代码仓库搜索**：根据论文内容自动搜索相关代码仓库（支持按关键词、方法名匹配）
 - **每日推荐**：基于阅读历史和偏好生成每日论文推荐列表
+- **用户反馈系统**：支持点赞/点踩，帮助 Agent 改进
 - 定时任务循环更新论文库
 
 ## 快速开始
@@ -99,6 +133,11 @@ Web 界面支持：
 - 补充引用关系和相似论文推荐
 - **GitHub 代码搜索**：为论文查找相关代码实现，支持一键跳转
 - **每日推荐**：查看个性化论文推荐，按相关性排序
+- **论文专家对话**：支持多轮对话，自动规划任务，自我反思改进
+- **历史对话面板**：左侧显示历史会话，支持切换和继续对话
+- **论文面板折叠**：可折叠论文列表，聊天区域更宽敞
+- **Agent 状态显示**：实时显示 Agent 执行进度和使用的工具
+- **用户反馈系统**：支持点赞/点踩 + 分类备注，帮助 Agent 改进
 - 导出 Markdown 阅读报告
 - 勾选多篇论文后生成中文综述草稿，并保存到 `reports/literature_review.md`
 
@@ -195,12 +234,12 @@ python -m timepredict_agent init-config
 
 ```text
 timepredict_agent/
-  agent.py          # agent 编排逻辑
+  agent.py          # Agent 核心逻辑（规划、记忆、反思、多 Agent 协作）
   arxiv_client.py   # arXiv API 客户端
   cli.py            # 命令行入口
   config.py         # TOML 配置
   models.py         # 数据模型
-  storage.py        # SQLite 存储
+  storage.py        # SQLite 存储（含 Agent 相关表）
   summarizer.py     # 本地摘要器
   sources.py        # 多源采集器
   citation.py       # 引用分析和相似推荐
@@ -208,19 +247,57 @@ timepredict_agent/
   tagger.py         # 论文分类标签
   scheduler.py      # 定时更新
   github_search.py  # GitHub 代码仓库搜索
-  web.py            # 本地 Web 服务
-  static/           # 可视化操作台
+  web.py            # 本地 Web 服务（含 Agent API）
+  static/           # 可视化操作台（含历史对话面板）
+```
+
+## 数据库表结构
+
+```text
+papers              # 论文元数据、摘要、标签
+agent_sessions      # Agent 会话管理
+agent_turns         # 对话历史（含计划、工具调用、反思）
+agent_memory        # 长期记忆存储
+agent_feedback      # 用户反馈（点赞/点踩）
+agent_task_runs     # 任务执行记录
+```
+
+## Agent 架构
+
+```
+用户输入问题
+      ↓
+意图识别（7维）
+      ↓
+记忆检索（agent_memory）
+      ↓
+任务规划（动态 5-8 步）
+      ↓
+多 Agent 执行
+  ├─ Reader Agent：读取论文、全文
+  ├─ Code Agent：GitHub 搜索
+  ├─ Reader Agent：引用分析、相关论文
+  ├─ Tutor Agent：方法对比、综合解释
+  └─ Critic Agent：反思检查
+      ↓
+自我反思 + 自动修复
+      ↓
+持久化存储（会话、记忆、反馈）
+      ↓
+返回结果 + 元数据
 ```
 
 ## 后续可扩展方向
 
+- 语义记忆检索（当前基于关键词匹配）
+- 动态规划调整（根据执行结果调整计划）
+- LLM 驱动的深度反思
+- 从用户反馈中学习
+- 主动追问机制
 - 增加论文阅读状态、收藏、已读/待读工作流
 - 增加更细的方向分类，例如 foundation model、probabilistic、process mining、anomaly detection
 - 增加批量 LLM 综述和跨论文对比报告
-- 增加更稳定的浏览器辅助导入流程
-- 优化每日推荐算法，支持基于阅读历史的个性化排序
 - 支持更多代码托管平台（GitLab、Bitbucket）
-- 添加论文笔记和标注功能
 
 ## 本地密钥文件
 
