@@ -6,7 +6,7 @@ import json
 
 from .agent import PaperAgent
 from .config import load_config
-from .storage import decode_json_field, decode_summary
+from .storage import decode_json_field, decode_summary, migrate_sqlite_to_mysql
 
 
 def build_parser() -> ArgumentParser:
@@ -57,8 +57,12 @@ def build_parser() -> ArgumentParser:
     schedule.add_argument("--interval-minutes", type=int, default=1440)
 
     web = subparsers.add_parser("web", help="Start the local visual dashboard.")
-    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--host", default="0.0.0.0")
     web.add_argument("--port", type=int, default=8765)
+
+    migrate = subparsers.add_parser("migrate-sqlite-to-mysql", help="Copy local SQLite data into MySQL.")
+    migrate.add_argument("--sqlite-path", help="SQLite database path. Defaults to config database_path.")
+    migrate.add_argument("--mysql-url", help="MySQL URL. Defaults to config database_url or TIMEPREDICT_DATABASE_URL.")
 
     subparsers.add_parser("init-config", help="Print an example config.")
     return parser
@@ -83,6 +87,14 @@ def main(argv: list[str] | None = None) -> None:
 
         run_scheduler(config, args.interval_minutes)
         return
+    if args.command == "migrate-sqlite-to-mysql":
+        sqlite_path = Path(args.sqlite_path) if args.sqlite_path else config.database_path
+        mysql_url = args.mysql_url or config.database_url
+        if not mysql_url:
+            raise SystemExit("MySQL URL is required: pass --mysql-url or set database_url/TIMEPREDICT_DATABASE_URL.")
+        result = migrate_sqlite_to_mysql(sqlite_path, mysql_url)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
 
     agent = PaperAgent(config)
     try:
@@ -90,6 +102,8 @@ def main(argv: list[str] | None = None) -> None:
             if args.sources:
                 config = type(config)(
                     database_path=config.database_path,
+                    database_backend=config.database_backend,
+                    database_url=config.database_url,
                     report_dir=config.report_dir,
                     pdf_dir=config.pdf_dir,
                     query=config.query,
@@ -176,6 +190,8 @@ def _print_paper(row) -> None:
 
 EXAMPLE_CONFIG = """[agent]
 database_path = "data/papers.sqlite3"
+database_backend = "sqlite"
+database_url = ""
 report_dir = "reports"
 pdf_dir = "data/pdfs"
 max_results = 80
