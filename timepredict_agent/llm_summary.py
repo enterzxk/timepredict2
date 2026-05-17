@@ -96,24 +96,38 @@ class AnthropicSummaryClient:
         question: str,
         repositories: list[dict] | None = None,
         history: list[dict] | None = None,
+        memory: list[dict] | None = None,
     ) -> str:
         if not self.available():
             raise RuntimeError("未检测到 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY。")
+
+        system_prompt = (
+            "你是深度学习和人工智能论文导师。请用简体中文回答用户关于单篇论文的问题。"
+            "回答要能让用户不翻正文也尽量理解论文：必须解释方法思想、具体流程、创新点、与已有方法对比、实验设计和结果含义。"
+            "只根据给定论文信息和 GitHub 仓库信息作答；信息缺失时明确说缺失，不要编造指标、数据集或结论。"
+            "不要输出思考过程。"
+        )
+        if memory:
+            memory_notes = []
+            for item in memory[:5]:
+                kind = item.get("kind", "")
+                key = item.get("key", "")
+                if kind == "feedback":
+                    memory_notes.append(f"- 用户反馈偏好：{key}")
+                elif kind == "preference":
+                    memory_notes.append(f"- 用户偏好：{key}")
+            if memory_notes:
+                system_prompt += "\n\n用户历史反馈和偏好（请在回答中参考）：\n" + "\n".join(memory_notes)
 
         payload = {
             "model": self.model,
             "max_tokens": _safe_max_tokens(),
             "temperature": 0.2,
-            "system": (
-                "你是深度学习和人工智能论文导师。请用简体中文回答用户关于单篇论文的问题。"
-                "回答要能让用户不翻正文也尽量理解论文：必须解释方法思想、具体流程、创新点、与已有方法对比、实验设计和结果含义。"
-                "只根据给定论文信息和 GitHub 仓库信息作答；信息缺失时明确说缺失，不要编造指标、数据集或结论。"
-                "不要输出思考过程。"
-            ),
+            "system": system_prompt,
             "messages": [
                 {
                     "role": "user",
-                    "content": _build_expert_prompt(paper, summary, pdf_text, question, repositories or [], history or []),
+                    "content": _build_expert_prompt(paper, summary, pdf_text, question, repositories or [], history or [], memory or []),
                 }
             ],
         }
@@ -122,6 +136,198 @@ class AnthropicSummaryClient:
         if not text:
             raise RuntimeError("LLM 返回为空。")
         return text.strip()
+
+    def classify_intent(self, question: str) -> dict[str, bool] | None:
+        if not self.available():
+            return None
+        try:
+            payload = {
+                "model": self.model,
+                "max_tokens": 200,
+                "temperature": 0,
+                "system": "你是一个意图分类器。根据用户问题，返回 JSON 格式的意图分类。只返回 JSON，不要其他文字。",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"用户问题：{question}\n\n"
+                            "请判断这个问题属于以下哪些意图（true/false）：\n"
+                            "- concept: 询问概念定义、术语含义\n"
+                            "- method: 询问方法流程、模型架构、技术细节\n"
+                            "- experiment: 询问实验设置、数据集、指标、结果\n"
+                            "- innovation: 询问创新点、贡献、改进\n"
+                            "- comparison: 询问与其他方法的对比、区别\n"
+                            "- direction: 询问研究方向、未来工作、选题建议\n"
+                            "- code: 需要代码实现、复现、GitHub仓库\n\n"
+                            '返回格式：{"concept":bool,"method":bool,"experiment":bool,"innovation":bool,"comparison":bool,"direction":bool,"code":bool}'
+                        ),
+                    }
+                ],
+            }
+            response = self._post_messages(payload)
+            text = _message_text(response).strip()
+            import json as _json
+            import re as _re
+            match = _re.search(r'\{[^}]+\}', text)
+            if match:
+                result = _json.loads(match.group())
+                return {
+                    "concept": bool(result.get("concept", False)),
+                    "method": bool(result.get("method", False)),
+                    "experiment": bool(result.get("experiment", False)),
+                    "innovation": bool(result.get("innovation", False)),
+                    "comparison": bool(result.get("comparison", False)),
+                    "direction": bool(result.get("direction", False)),
+                    "code": bool(result.get("code", False)),
+                }
+        except Exception:
+            pass
+        return None
+
+    def plan_agent_tasks(
+        self,
+        question: str,
+        paper_title: str,
+        intent: dict[str, bool] | None = None,
+    ) -> list[dict] | None:
+        if not self.available():
+            return None
+        intent_str = ""
+        if intent:
+            active = [k for k, v in intent.items() if v]
+            if active:
+                intent_str = f"用户意图涵盖：{', '.join(active)}"
+        try:
+            payload = {
+                "model": self.model,
+                "max_tokens": 400,
+                "temperature": 0.1,
+                "system": (
+                    "你是一个论文研究任务规划器。根据用户问题和论文信息，生成一个有序的子任务列表。"
+                    "每个子任务包含 step（步骤描述）和 tools（需要的工具列表）。"
+                    '只返回 JSON 数组，格式：[{"step":"...","tools":["..."]}]'
+                ),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"论文：{paper_title}\n"
+                            f"用户问题：{question}\n"
+                            f"{intent_str}\n\n"
+                            "请规划 3-6 个子任务来回答这个问题。工具可选：read_paper, search_github, analyze_method, compare_results, summarize, reflect"
+                        ),
+                    }
+                ],
+            }
+            response = self._post_messages(payload)
+            text = _message_text(response).strip()
+            match = re.search(r'\[.*\]', text, re.S)
+            if match:
+                tasks = json.loads(match.group())
+                if isinstance(tasks, list):
+                    return tasks[:8]
+        except Exception:
+            pass
+        return None
+
+    def reflect_on_answer(
+        self,
+        question: str,
+        answer: str,
+        paper_title: str,
+    ) -> dict | None:
+        if not self.available():
+            return None
+        try:
+            payload = {
+                "model": self.model,
+                "max_tokens": 500,
+                "temperature": 0.1,
+                "system": (
+                    "你是一个论文回答质量评审员。评估回答的质量并指出不足。"
+                    '返回 JSON，格式：{"score":0-10,"strengths":["..."],"weaknesses":["..."],"suggestions":["..."]}'
+                ),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"论文：{paper_title}\n"
+                            f"用户问题：{question}\n\n"
+                            f"回答：\n{answer[:4000]}\n\n"
+                            "请评估这个回答：完整性、准确性、清晰度、是否直接回答了用户问题。"
+                        ),
+                    }
+                ],
+            }
+            response = self._post_messages(payload)
+            text = _message_text(response).strip()
+            match = re.search(r'\{.*\}', text, re.S)
+            if match:
+                result = json.loads(match.group())
+                return {
+                    "score": min(10, max(0, int(result.get("score", 5)))),
+                    "strengths": _string_list(result.get("strengths")),
+                    "weaknesses": _string_list(result.get("weaknesses")),
+                    "suggestions": _string_list(result.get("suggestions")),
+                }
+        except Exception:
+            pass
+        return None
+
+    def analyze_paper_structure(self, paper_title: str, abstract: str, pdf_text: str) -> dict | None:
+        """分析论文结构，提取章节组织方式"""
+        if not self.available():
+            return None
+
+        try:
+            prompt = f"""请分析以下论文的结构：
+
+标题：{paper_title}
+摘要：{abstract}
+全文（前 10000 字符）：{pdf_text[:10000]}
+
+请提取：
+1. 章节结构（标题和层级）
+2. 每个章节的核心内容和论证方式
+3. 段落组织模式
+4. 引用使用方式
+5. 图表使用特点
+
+输出 JSON 格式：
+{{
+  "sections": [
+    {{
+      "title": "章节标题",
+      "level": 1,
+      "content_type": "introduction|method|experiment|conclusion|other",
+      "paragraph_count": 3,
+      "description": "章节核心内容"
+    }}
+  ],
+  "writing_style": "学术论文风格描述",
+  "citation_pattern": "引用方式描述",
+  "figure_usage": "图表使用方式"
+}}"""
+
+            payload = {
+                "model": self.model,
+                "max_tokens": 2000,
+                "temperature": 0.2,
+                "system": "你是学术论文结构分析专家。请分析论文结构并输出 JSON 格式。",
+                "messages": [{"role": "user", "content": prompt}]
+            }
+
+            response = self._post_messages(payload)
+            text = _message_text(response).strip()
+
+            match = re.search(r'\{.*\}', text, re.S)
+            if match:
+                return json.loads(match.group())
+
+            return None
+        except Exception as e:
+            print(f"Error analyzing paper structure: {e}")
+            return None
 
     def _post_messages(self, anthropic_payload: dict) -> dict:
         if _uses_openai_chat_format(self.base_url):
@@ -230,6 +436,7 @@ def _build_expert_prompt(
     question: str,
     repositories: list[dict],
     history: list[dict] | None = None,
+    memory: list[dict] | None = None,
 ) -> str:
     authors = ", ".join(paper.authors[:8])
     repo_lines = []
@@ -254,6 +461,20 @@ def _build_expert_prompt(
         if answer_text:
             history_lines.append(f"专家：{answer_text[:800]}")
     history_section = f"\n\n最近对话：\n{chr(10).join(history_lines)}" if history_lines else ""
+    memory_section = ""
+    if memory:
+        memory_lines = []
+        for item in memory[:5]:
+            kind = item.get("kind", "")
+            key = item.get("key", "")
+            value = item.get("value", {})
+            if kind == "feedback":
+                note = value.get("note", key)
+                memory_lines.append(f"- 用户反馈：{note}")
+            elif kind == "preference":
+                memory_lines.append(f"- 用户偏好：{key}（权重 {item.get('weight', 1)}）")
+        if memory_lines:
+            memory_section = f"\n\n用户偏好记忆：\n{chr(10).join(memory_lines)}"
     return f"""
 用户问题：{question}
 
@@ -289,7 +510,7 @@ venue：{paper.venue}
 局限：{summary.limitations}
 
 GitHub 候选仓库：
-{chr(10).join(repo_lines) if repo_lines else "未检索到或用户未要求检索。"}{history_section}{pdf_section}
+{chr(10).join(repo_lines) if repo_lines else "未检索到或用户未要求检索。"}{history_section}{memory_section}{pdf_section}
 """.strip()
 
 
