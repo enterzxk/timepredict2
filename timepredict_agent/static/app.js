@@ -18,6 +18,11 @@ const state = {
   activeExpertSessionId: null,
   agentStatus: "",
   expertImageAttachments: [],
+  generator: {
+    selectedTemplate: null,
+    structure: null,
+    generatedContent: null,
+  },
 };
 
 const el = {
@@ -53,6 +58,17 @@ const el = {
   mobileMenuToggle: document.querySelector("#mobileMenuToggle"),
   sidebarOverlay: document.querySelector("#sidebarOverlay"),
   sidebar: document.querySelector(".sidebar"),
+  generatorView: document.getElementById("generatorView"),
+  templatePaperList: document.getElementById("templatePaperList"),
+  structurePreview: document.getElementById("structurePreview"),
+  structureContent: document.getElementById("structureContent"),
+  paperTopic: document.getElementById("paperTopic"),
+  paperOutline: document.getElementById("paperOutline"),
+  paperCode: document.getElementById("paperCode"),
+  generatePaperButton: document.getElementById("generatePaperButton"),
+  exportMarkdownButton: document.getElementById("exportMarkdownButton"),
+  exportPdfButton: document.getElementById("exportPdfButton"),
+  paperPreview: document.getElementById("paperPreview"),
 };
 
 const priorityLabel = {
@@ -125,6 +141,12 @@ const viewCopy = {
     subtitle: "上传 PDF 后自动入库、提取全文，并基于这篇论文推荐相似论文。",
     listTitle: "已有论文",
     listSubtitle: "上传完成后会自动选中新论文",
+  },
+  generator: {
+    title: "论文生成",
+    subtitle: "选择模板论文结构，填写研究主题和大纲，自动生成论文草稿。",
+    listTitle: "模板论文",
+    listSubtitle: "点击论文查看其结构",
   },
 };
 
@@ -384,6 +406,9 @@ function openView(view) {
   if (view === "expert") {
     loadExpertSessions();
   }
+  if (view === "generator") {
+    initGeneratorView();
+  }
   // 恢复目标视图的滚动位置
   requestAnimationFrame(() => {
     if (mainContent && state.scrollPositions && state.scrollPositions[view] != null) {
@@ -434,6 +459,8 @@ function render() {
     renderManualAddPanel();
   } else if (state.activeView === "upload") {
     renderUploadPanel();
+  } else if (state.activeView === "generator") {
+    // generator view uses its own HTML section, no panel rendering needed
   } else {
     renderDetail();
   }
@@ -442,14 +469,17 @@ function render() {
 function renderViewChrome() {
   const copy = viewCopy[state.activeView] || viewCopy.library;
   const isExpertView = state.activeView === "expert";
+  const isGeneratorView = state.activeView === "generator";
   el.viewTitle.textContent = copy.title;
   el.viewSubtitle.textContent = copy.subtitle;
   el.listTitle.textContent = copy.listTitle;
   el.listSubtitle.textContent = copy.listSubtitle;
+  el.contentGrid.hidden = isGeneratorView;
+  if (el.generatorView) el.generatorView.hidden = !isGeneratorView;
   el.contentGrid.classList.toggle("wide-detail", ["triage", "discovery", "expert"].includes(state.activeView));
   el.contentGrid.classList.toggle("expert-view", isExpertView);
   el.contentGrid.classList.toggle("expert-collapsed", isExpertView && state.expertPapersCollapsed);
-  el.workspace?.classList.toggle("expert-shell", isExpertView);
+  el.workspace?.classList.toggle("expert-shell", isExpertView || isGeneratorView);
   if (el.expertPaperPanelToggle) {
     el.expertPaperPanelToggle.hidden = !isExpertView;
     el.expertPaperPanelToggle.textContent = state.expertPapersCollapsed ? "展开" : "收起";
@@ -2664,6 +2694,144 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+// ========== 论文生成 ==========
+
+function initGeneratorView() {
+  loadTemplatePapers();
+  if (initGeneratorView._initialized) return;
+  initGeneratorView._initialized = true;
+  el.generatePaperButton.addEventListener('click', generatePaper);
+  el.exportMarkdownButton.addEventListener('click', exportMarkdown);
+  el.exportPdfButton.addEventListener('click', exportPdf);
+}
+
+function loadTemplatePapers() {
+  const container = el.templatePaperList;
+  container.innerHTML = '';
+
+  state.papers.forEach(paper => {
+    const item = document.createElement('div');
+    item.className = 'template-paper-item';
+    item.dataset.paperId = paper.arxiv_id;
+    item.innerHTML = `
+      <h4>${escapeHtml(paper.title)}</h4>
+      <p>${escapeHtml(paper.abstract?.slice(0, 100) || '')}...</p>
+    `;
+    item.addEventListener('click', () => selectTemplatePaper(paper.arxiv_id));
+    container.appendChild(item);
+  });
+}
+
+async function selectTemplatePaper(paperId) {
+  document.querySelectorAll('.template-paper-item').forEach(item => {
+    item.classList.toggle('selected', item.dataset.paperId === paperId);
+  });
+
+  state.generator.selectedTemplate = paperId;
+
+  try {
+    const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/analyze-structure`);
+    const data = await response.json();
+
+    if (data.structure) {
+      state.generator.structure = data.structure;
+      renderStructurePreview(data.structure);
+    }
+  } catch (error) {
+    showMessage('分析论文结构失败: ' + error.message, true);
+  }
+}
+
+function renderStructurePreview(structure) {
+  const container = el.structureContent;
+  container.innerHTML = '';
+
+  if (structure.sections) {
+    structure.sections.forEach(section => {
+      const item = document.createElement('div');
+      item.className = `structure-item level-${section.level || 1}`;
+      item.textContent = section.title;
+      container.appendChild(item);
+    });
+  }
+
+  el.structurePreview.hidden = false;
+}
+
+async function generatePaper() {
+  const topic = el.paperTopic.value.trim();
+  const outline = el.paperOutline.value.trim().split('\n').filter(line => line.trim());
+  const code = el.paperCode.value.trim();
+
+  if (!topic) {
+    showMessage('请输入研究主题', true);
+    return;
+  }
+
+  if (!state.generator.selectedTemplate) {
+    showMessage('请选择模板论文', true);
+    return;
+  }
+
+  setBusy(true);
+  showMessage('正在生成论文...');
+
+  try {
+    const response = await fetch(`/api/papers/${encodeURIComponent(state.generator.selectedTemplate)}/generate-paper`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, outline, code })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    state.generator.generatedContent = data.content;
+    renderPaperPreview(data.content);
+
+    el.exportMarkdownButton.hidden = false;
+    el.exportPdfButton.hidden = false;
+
+    showMessage('论文生成完成！');
+  } catch (error) {
+    showMessage('生成论文失败: ' + error.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderPaperPreview(content) {
+  const html = content
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+
+  el.paperPreview.innerHTML = html;
+}
+
+function exportMarkdown() {
+  if (!state.generator.generatedContent) return;
+
+  const blob = new Blob([state.generator.generatedContent], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `generated-paper-${Date.now()}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPdf() {
+  showMessage('PDF 导出功能开发中...');
 }
 
 document.addEventListener('DOMContentLoaded', initStaggerAnimation);
