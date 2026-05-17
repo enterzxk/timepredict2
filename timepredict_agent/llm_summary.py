@@ -329,6 +329,60 @@ class AnthropicSummaryClient:
             print(f"Error analyzing paper structure: {e}")
             return None
 
+    def generate_paper_content(self, structure: dict, topic: str, outline: list[str], code: str = "") -> dict | None:
+        """基于结构模板生成论文内容"""
+        if not self.available():
+            return None
+
+        try:
+            sections_desc = "\n".join([
+                f"- {s['title']} ({s.get('content_type', 'other')})"
+                for s in structure.get('sections', [])
+            ])
+
+            outline_desc = "\n".join([f"- {item}" for item in outline])
+
+            prompt = f"""基于以下结构模板和用户输入，生成一篇论文：
+
+结构模板：
+{sections_desc}
+
+写作风格：{structure.get('writing_style', '学术论文风格')}
+
+用户输入：
+主题：{topic}
+大纲要点：
+{outline_desc}
+
+{f"代码片段：{code}" if code else ""}
+
+请按照模板结构生成完整论文内容，保持学术论文的严谨性和逻辑性。
+每个章节需要详细展开，包含足够的技术细节。
+输出 Markdown 格式。"""
+
+            payload = {
+                "model": self.model,
+                "max_tokens": 8000,
+                "temperature": 0.3,
+                "system": "你是学术论文写作专家。请根据给定的结构模板和主题生成高质量的学术论文内容。",
+                "messages": [{"role": "user", "content": prompt}]
+            }
+
+            response = self._post_messages(payload)
+            text = _message_text(response).strip()
+
+            if not text:
+                return None
+
+            return {
+                "content": text,
+                "format": "markdown",
+                "topic": topic
+            }
+        except Exception as e:
+            print(f"Error generating paper content: {e}")
+            return None
+
     def _post_messages(self, anthropic_payload: dict) -> dict:
         if _uses_openai_chat_format(self.base_url):
             payload = _to_openai_chat_payload(anthropic_payload)

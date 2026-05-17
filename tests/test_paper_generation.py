@@ -22,3 +22,29 @@ def test_analyze_paper_structure():
     assert result is not None
     assert "sections" in result
     assert len(result["sections"]) > 0
+
+
+def test_generate_paper_content():
+    """测试论文内容生成功能"""
+    client = AnthropicSummaryClient()
+    if not client.available():
+        pytest.skip("LLM not available")
+
+    structure = {
+        "sections": [
+            {"title": "Introduction", "level": 1, "content_type": "introduction"},
+            {"title": "Method", "level": 1, "content_type": "method"},
+            {"title": "Experiments", "level": 1, "content_type": "experiment"},
+            {"title": "Conclusion", "level": 1, "content_type": "conclusion"}
+        ],
+        "writing_style": "学术论文风格"
+    }
+
+    topic = "基于 Transformer 的时间序列预测"
+    outline = ["问题定义", "模型架构", "实验设计", "结果分析"]
+
+    result = client.generate_paper_content(structure, topic, outline)
+
+    assert result is not None
+    assert "content" in result
+    assert len(result["content"]) > 0
