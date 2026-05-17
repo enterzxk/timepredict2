@@ -9,7 +9,7 @@ import io
 import json
 import mimetypes
 
-from .agent import PaperAgent
+from .agent import PaperAgent, _paper_from_row
 from .config import AgentConfig
 from .llm_summary import AnthropicSummaryClient
 from .storage import decode_json_field, decode_summary
@@ -49,6 +49,10 @@ def _make_handler(config: AgentConfig):
                 if parsed.path == "/api/daily-recommendations":
                     self._handle_daily_recommendations(parsed.query)
                     return
+                if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/analyze-structure"):
+                    paper_id = unquote(parsed.path.split("/")[-2])
+                    self._handle_analyze_structure(paper_id)
+                    return
                 if parsed.path.startswith("/api/papers/"):
                     self._handle_show(unquote(parsed.path.rsplit("/", 1)[-1]))
                     return
@@ -57,6 +61,7 @@ def _make_handler(config: AgentConfig):
                     self._send_json(
                         {
                             "database_path": str(config.database_path),
+                            "database_backend": config.database_backend,
                             "report_dir": str(config.report_dir),
                             "pdf_dir": str(config.pdf_dir),
                             "max_results": config.max_results,
@@ -118,6 +123,10 @@ def _make_handler(config: AgentConfig):
                     paper_id = unquote(parsed.path.split("/")[-2])
                     self._handle_expert_chat(paper_id)
                     return
+                if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/expert-chat-stream"):
+                    paper_id = unquote(parsed.path.split("/")[-2])
+                    self._handle_expert_chat_stream(paper_id)
+                    return
                 if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/llm-summary"):
                     paper_id = unquote(parsed.path.split("/")[-2])
                     self._handle_llm_summary(paper_id)
@@ -125,6 +134,10 @@ def _make_handler(config: AgentConfig):
                 if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/local-summary"):
                     paper_id = unquote(parsed.path.split("/")[-2])
                     self._handle_local_summary(paper_id)
+                    return
+                if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/generate-paper"):
+                    paper_id = unquote(parsed.path.split("/")[-2])
+                    self._handle_generate_paper(paper_id)
                     return
                 if parsed.path == "/api/papers/batch-llm-summary":
                     self._handle_batch_llm_summary()
@@ -200,6 +213,8 @@ def _make_handler(config: AgentConfig):
             if payload.get("sources"):
                 active_config = type(config)(
                     database_path=config.database_path,
+                    database_backend=config.database_backend,
+                    database_url=config.database_url,
                     report_dir=config.report_dir,
                     pdf_dir=config.pdf_dir,
                     query=config.query,
@@ -342,10 +357,58 @@ def _make_handler(config: AgentConfig):
                     prefer_llm=bool(payload.get("prefer_llm", True)),
                     history=payload.get("history") if isinstance(payload.get("history"), list) else [],
                     session_id=payload.get("session_id"),
+                    image_attachments=payload.get("image_attachments"),
                 )
                 self._send_json(result)
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_expert_chat_stream(self, paper_id: str) -> None:
+            payload = self._read_json()
+            question = str(payload.get("question") or "").strip()
+            if not question:
+                self._send_json({"error": "请输入想问论文专家的问题。"}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            agent = PaperAgent(config)
+            try:
+                def send_event(event_type: str, data: dict) -> None:
+                    try:
+                        chunk = f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                        self.wfile.write(chunk.encode("utf-8"))
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+                send_event("status", {"message": "Agent 正在规划任务..."})
+                result = agent.ask_paper_expert(
+                    paper_id,
+                    question,
+                    include_github=bool(payload.get("include_github", False)),
+                    github_limit=_to_int(payload.get("github_limit"), 5),
+                    prefer_llm=bool(payload.get("prefer_llm", True)),
+                    history=payload.get("history") if isinstance(payload.get("history"), list) else [],
+                    session_id=payload.get("session_id"),
+                    image_attachments=payload.get("image_attachments"),
+                )
+                plan = result.get("plan", [])
+                for step in plan:
+                    send_event("step", {"label": step.get("label", ""), "status": step.get("status", "completed")})
+                tool_calls = result.get("tool_calls", [])
+                for call in tool_calls:
+                    send_event("tool", {"tool": call.get("tool", ""), "status": call.get("status", "completed")})
+                send_event("answer", {"answer": result.get("answer", ""), "used_llm": result.get("used_llm", False)})
+                send_event("complete", result)
+            except ValueError as exc:
+                send_event("error", {"error": str(exc)})
+            except Exception as exc:
+                send_event("error", {"error": f"服务器处理请求失败：{exc}"})
             finally:
                 agent.close()
 
@@ -412,6 +475,49 @@ def _make_handler(config: AgentConfig):
                 self._send_json({"paper": _row_to_dict(row)})
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+            finally:
+                agent.close()
+
+        def _handle_generate_paper(self, paper_id: str) -> None:
+            """处理论文生成请求"""
+            payload = self._read_json()
+            topic = str(payload.get("topic", "")).strip()
+            outline = payload.get("outline", [])
+            code = str(payload.get("code", "")).strip()
+
+            if not topic:
+                self._send_json({"error": "Topic is required"}, HTTPStatus.BAD_REQUEST)
+                return
+
+            agent = PaperAgent(config)
+            try:
+                result = agent.generate_paper(paper_id, topic, outline, code)
+                self._send_json(result)
+            except ValueError as e:
+                self._send_json({"error": str(e)}, HTTPStatus.NOT_FOUND)
+            except RuntimeError as e:
+                self._send_json({"error": str(e)}, HTTPStatus.BAD_GATEWAY)
+            finally:
+                agent.close()
+
+        def _handle_analyze_structure(self, paper_id: str) -> None:
+            """分析论文结构"""
+            agent = PaperAgent(config)
+            try:
+                row = agent.store.find_paper(paper_id)
+                if row is None:
+                    self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
+                    return
+
+                paper = _paper_from_row(row)
+                pdf_text = agent._pdf_text_for_row(row, max_chars=30000)
+
+                structure = agent.llm.analyze_paper_structure(paper.title, paper.abstract, pdf_text)
+                if not structure:
+                    self._send_json({"error": "Failed to analyze structure"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+
+                self._send_json({"structure": structure, "paper_id": paper_id})
             finally:
                 agent.close()
 
