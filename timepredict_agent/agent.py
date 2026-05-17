@@ -15,7 +15,7 @@ from .github_search import GitHubRepositorySearcher
 from .llm_summary import AnthropicSummaryClient
 from .models import Paper, SourceResult
 from .sources import build_sources
-from .storage import PaperStore, decode_json_field, decode_json_object, decode_summary
+from .storage import create_paper_store, decode_json_field, decode_json_object, decode_summary
 from .summarizer import ExtractiveSummarizer
 from .tagger import classify_paper
 
@@ -72,7 +72,7 @@ class PaperAgent:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self.summarizer = ExtractiveSummarizer()
-        self.store = PaperStore(config.database_path)
+        self.store = create_paper_store(config)
         self.downloader = PdfDownloader(config.pdf_dir)
         self.pdf_extractor = PdfTextExtractor()
         self.citations = CitationService()
@@ -203,6 +203,7 @@ class PaperAgent:
         prefer_llm: bool = True,
         history: list[dict] | None = None,
         session_id: str | None = None,
+        image_attachments: list[dict] | None = None,
     ) -> dict:
         row = self.store.find_paper(paper_id)
         if row is None:
@@ -210,11 +211,25 @@ class PaperAgent:
         paper = _paper_from_row(row)
         summary = decode_summary(row)
         pdf_text = self._pdf_text_for_row(row, max_chars=30000)
+        attachments = _normalize_image_attachments(image_attachments)
 
         session = self._ensure_agent_session(row, question, session_id)
-        intent = _agent_question_intent(question, include_github)
+        intent = self._classify_intent_with_llm(question, include_github)
         memory_used = _memory_for_question(self.store.list_agent_memory(limit=12), question)
-        plan = _build_agent_plan(question, intent, include_github, bool(pdf_text))
+
+        # LLM 动态规划：尝试用 LLM 生成更精细的子任务
+        llm_plan = None
+        if prefer_llm and self.llm.available():
+            try:
+                llm_plan = self.llm.plan_agent_tasks(question, row["title"], intent)
+            except Exception:
+                pass
+
+        if llm_plan:
+            plan = _build_plan_from_llm(llm_plan, intent, include_github, bool(pdf_text))
+        else:
+            plan = _build_agent_plan(question, intent, include_github, bool(pdf_text))
+
         task_run = self.store.create_agent_task_run(session["id"], paper_id, plan)
         tool_calls, repositories, github_error = self._execute_agent_plan(
             row=row,
@@ -232,7 +247,7 @@ class PaperAgent:
         merged_history = _merge_agent_history(history or [], self.store.list_agent_turns(session["id"]))
         if prefer_llm and self.llm.available():
             try:
-                answer = self.llm.answer_paper_question(paper, summary, pdf_text, question, repositories, merged_history)
+                answer = self.llm.answer_paper_question(paper, summary, pdf_text, question, repositories, merged_history, memory_used)
                 used_llm = True
             except RuntimeError as exc:
                 llm_error = str(exc)
@@ -240,7 +255,27 @@ class PaperAgent:
         else:
             answer = _local_expert_answer(row, summary, question, repositories, pdf_text)
 
+        if attachments:
+            answer = _append_image_attachment_note(answer, attachments)
+
+        # 反思：本地规则 + LLM 深度反思
         reflection = _reflect_expert_answer(question, answer, summary, pdf_text, intent, tool_calls)
+
+        # LLM 深度反思
+        if used_llm and self.llm.available():
+            try:
+                llm_reflection = self.llm.reflect_on_answer(question, answer, row["title"])
+                if llm_reflection:
+                    reflection["llm_reflection"] = llm_reflection
+                    if llm_reflection.get("score", 10) < 6:
+                        reflection["passed"] = False
+                        if llm_reflection.get("weaknesses"):
+                            reflection["notes"].extend(
+                                [f"LLM 评审：{w}" for w in llm_reflection["weaknesses"][:2]]
+                            )
+            except Exception:
+                pass
+
         if not reflection["passed"]:
             answer = _repair_answer_from_reflection(answer, reflection)
         _finalize_agent_tool_calls(tool_calls, reflection)
@@ -255,6 +290,7 @@ class PaperAgent:
             tool_calls=tool_calls,
             reflection=reflection,
             memory_used=memory_used,
+            image_attachments=attachments,
         )
         title = _agent_session_title(row, question)
         self.store.touch_agent_session(session["id"], title if session.get("turn_count", 0) == 0 else None)
@@ -274,6 +310,7 @@ class PaperAgent:
             "tool_calls": tool_calls,
             "reflection": reflection,
             "memory_used": memory_used,
+            "image_attachments": attachments,
             "task_run": {"id": task_run["id"], "status": "completed", "steps": plan},
             "agent_roles": ["Planner Agent", "Reader Agent", "Code Agent", "Critic Agent", "Tutor Agent"],
         }
@@ -463,6 +500,15 @@ class PaperAgent:
         self.store.update_summary(paper_id, summary)
         return {"paper_id": paper_id, "summary": summary.__dict__, "paper": self.store.find_paper(paper_id)}
 
+    def _classify_intent_with_llm(self, question: str, include_github: bool) -> dict[str, bool]:
+        if self.llm.available():
+            llm_intent = self.llm.classify_intent(question)
+            if llm_intent is not None:
+                if include_github:
+                    llm_intent["code"] = True
+                return llm_intent
+        return _agent_question_intent(question, include_github)
+
     def _pdf_text_for_row(self, row, max_chars: int = 30000) -> str:
         pdf_text = row["pdf_text"] or ""
         if pdf_text:
@@ -604,6 +650,62 @@ class PaperAgent:
             "markdown": markdown,
             "path": str(output),
             "url": f"/{output.as_posix()}",
+        }
+
+    def generate_paper(self, template_paper_id: str, topic: str, outline: list[str], code: str = "") -> dict:
+        """基于模板论文生成新论文"""
+        row = self.store.find_paper(template_paper_id)
+        if row is None:
+            raise ValueError(f"Template paper not found: {template_paper_id}")
+
+        paper = _paper_from_row(row)
+        pdf_text = self._pdf_text_for_row(row, max_chars=30000)
+
+        # 分析模板论文结构
+        structure = self.llm.analyze_paper_structure(paper.title, paper.abstract, pdf_text)
+        if not structure:
+            structure = {
+                "sections": [
+                    {"title": "Introduction", "level": 1, "content_type": "introduction"},
+                    {"title": "Related Work", "level": 1, "content_type": "related_work"},
+                    {"title": "Method", "level": 1, "content_type": "method"},
+                    {"title": "Experiments", "level": 1, "content_type": "experiment"},
+                    {"title": "Conclusion", "level": 1, "content_type": "conclusion"}
+                ],
+                "writing_style": "学术论文风格"
+            }
+
+        # 生成论文内容
+        result = self.llm.generate_paper_content(structure, topic, outline, code)
+        if not result:
+            raise RuntimeError("Failed to generate paper content")
+
+        # 保存生成的论文
+        paper_id = f"generated:{_safe_token(topic)}"
+        generated_paper = Paper(
+            arxiv_id=paper_id,
+            title=f"Generated: {topic}",
+            abstract=f"基于《{paper.title}》的结构生成的论文",
+            authors=["AI Generated"],
+            published=datetime.now(timezone.utc).isoformat(),
+            updated=datetime.now(timezone.utc).isoformat(),
+            entry_url="",
+            pdf_url="",
+            categories=[],
+            source="generated",
+            source_id=paper_id,
+        )
+
+        summary = self.summarizer.summarize(generated_paper)
+        self.store.upsert_paper(generated_paper, summary)
+
+        return {
+            "paper_id": paper_id,
+            "template_paper_id": template_paper_id,
+            "topic": topic,
+            "structure": structure,
+            "content": result["content"],
+            "format": result["format"]
         }
 
     def export_markdown(self, output_path: Path, limit: int = 50) -> Path:
@@ -1196,6 +1298,50 @@ def _build_agent_plan(
     return steps
 
 
+def _build_plan_from_llm(
+    llm_plan: list[dict],
+    intent: dict[str, bool],
+    include_github: bool,
+    has_pdf_text: bool,
+) -> list[dict]:
+    TOOL_MAP = {
+        "read_paper": "read_context",
+        "read_fulltext": "read_fulltext",
+        "search_github": "search_github",
+        "analyze_method": "compare_methods",
+        "compare_results": "compare_methods",
+        "summarize": "synthesize",
+        "reflect": "reflect",
+    }
+    ROLE_MAP = {
+        "read_context": "Reader Agent",
+        "read_fulltext": "Reader Agent",
+        "search_github": "Code Agent",
+        "analyze_citations": "Reader Agent",
+        "find_related": "Reader Agent",
+        "compare_methods": "Tutor Agent",
+        "reflect": "Critic Agent",
+        "synthesize": "Tutor Agent",
+    }
+    steps = [_plan_step("read_context", "Reader Agent", "读取论文标题、摘要、结构化总结。")]
+    seen = {"read_context"}
+    for task in llm_plan[:6]:
+        tools = task.get("tools", [])
+        for tool in tools:
+            step_type = TOOL_MAP.get(tool, tool)
+            if step_type not in seen and step_type in ROLE_MAP:
+                seen.add(step_type)
+                steps.append(_plan_step(step_type, ROLE_MAP[step_type], task.get("step", "")))
+    if intent["code"] or include_github:
+        if "search_github" not in seen:
+            steps.append(_plan_step("search_github", "Code Agent", "检索 GitHub 候选仓库。"))
+    if "reflect" not in seen:
+        steps.append(_plan_step("reflect", "Critic Agent", "检查回答是否覆盖用户问题。"))
+    if "synthesize" not in seen:
+        steps.append(_plan_step("synthesize", "Tutor Agent", "生成面向学生的中文解释。"))
+    return steps
+
+
 def _plan_step(step_type: str, role: str, description: str) -> dict:
     return {
         "type": step_type,
@@ -1363,6 +1509,47 @@ def _repair_answer_from_reflection(answer: str, reflection: dict) -> str:
     if not additions:
         return answer
     return "\n\n".join([answer.strip(), *additions]).strip()
+
+
+def _normalize_image_attachments(items) -> list[dict]:
+    if not isinstance(items, list):
+        return []
+    attachments = []
+    for item in items[:4]:
+        if not isinstance(item, dict):
+            continue
+        data_url = str(item.get("data_url") or item.get("dataUrl") or "").strip()
+        mime_type = str(item.get("mime_type") or item.get("type") or "").strip().lower()
+        if not data_url.startswith("data:image/"):
+            continue
+        if mime_type and not mime_type.startswith("image/"):
+            continue
+        if len(data_url) > 2_800_000:
+            continue
+        size = item.get("size", 0)
+        try:
+            size = int(size)
+        except (TypeError, ValueError):
+            size = 0
+        attachments.append(
+            {
+                "name": str(item.get("name") or "image").strip()[:120] or "image",
+                "mime_type": mime_type or data_url.split(";", 1)[0].replace("data:", ""),
+                "size": max(0, size),
+                "data_url": data_url,
+            }
+        )
+    return attachments
+
+
+def _append_image_attachment_note(answer: str, attachments: list[dict]) -> str:
+    names = "、".join(item["name"] for item in attachments[:3])
+    suffix = (
+        f"图片附件：已收到 {len(attachments)} 张图片"
+        f"{f'（{names}）' if names else ''}。当前系统会把图片随本轮对话保存并在历史记录中展示；"
+        "本地兜底回答不会直接做视觉识别，所以如果你想问图里的某个模块、公式或实验曲线，最好在问题里指出位置或文字，我会结合论文上下文解释。"
+    )
+    return "\n\n".join([answer.strip(), suffix]).strip()
 
 
 def _agent_session_title(row, question: str) -> str:
