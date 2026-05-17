@@ -53,8 +53,11 @@
         </nav>
 
         <div class="side-section">
-          <p class="side-label">快速筛选</p>
-          <div class="quick-filters">
+          <button class="side-label side-toggle" type="button" aria-expanded="false">
+            快速筛选
+            <svg class="toggle-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="quick-filters" hidden>
             <button data-keyword="predictive process monitoring" type="button">预测监控</button>
             <button data-keyword="remaining time prediction" type="button">剩余时间预测</button>
             <button data-keyword="business process remaining time prediction" type="button">业务剩余时间</button>

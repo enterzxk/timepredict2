@@ -2609,25 +2609,30 @@ async function parseResponse(response) {
 }
 
 function showMessage(text, isError = false) {
-  if (showMessage._timer) {
-    window.clearTimeout(showMessage._timer);
-    showMessage._timer = null;
-  }
+  // 同时支持旧的 inline message 和 toast
   el.message.hidden = false;
   el.message.textContent = text;
-  el.message.classList.remove("error", "fading");
-  void el.message.offsetWidth; // force reflow to restart animation
-  if (isError) {
-    el.message.classList.add("error");
-  } else {
-    showMessage._timer = window.setTimeout(() => {
-      el.message.classList.add("fading");
-      showMessage._timer = window.setTimeout(() => {
-        el.message.hidden = true;
-        el.message.classList.remove("fading");
-      }, 400);
-    }, 3000);
-  }
+  el.message.classList.toggle("error", isError);
+  window.clearTimeout(showMessage._timer);
+  showMessage._timer = window.setTimeout(() => { el.message.hidden = true; }, 4000);
+
+  // Toast 通知
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' error' : ' success');
+  toast.textContent = text;
+  container.appendChild(toast);
+  toast.addEventListener('animationend', (e) => {
+    if (e.animationName === 'fadeOut') toast.remove();
+  });
+}
+
+function initToastContainer() {
+  const container = document.createElement('div');
+  container.id = 'toastContainer';
+  container.className = 'toast-container';
+  document.body.appendChild(container);
 }
 
 function confirmDialog(title, message) {
@@ -2834,4 +2839,19 @@ function exportPdf() {
   showMessage('PDF 导出功能开发中...');
 }
 
-document.addEventListener('DOMContentLoaded', initStaggerAnimation);
+document.addEventListener('DOMContentLoaded', () => {
+  initStaggerAnimation();
+  initSidebarToggle();
+  initToastContainer();
+});
+
+function initSidebarToggle() {
+  const toggle = document.querySelector('.side-toggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', () => {
+    const filters = toggle.nextElementSibling;
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', !expanded);
+    filters.hidden = expanded;
+  });
+}
