@@ -460,15 +460,39 @@ function renderViewChrome() {
   }
 }
 
+function animateCounter(element, target, duration = 2000) {
+  const start = 0;
+  const startTime = performance.now();
+
+  function update(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+    const current = Math.floor(start + (target - start) * easeOutQuart);
+
+    element.textContent = current.toLocaleString();
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
 function renderStats() {
   const methodTags = new Set();
   for (const paper of state.papers) {
     for (const tag of paper.summary.method_tags || []) methodTags.add(tag);
   }
   const latestValidPaper = state.papers.find((paper) => !isFutureDate(paper.published));
-  el.paperCount.textContent = state.papers.length;
-  el.highCount.textContent = state.papers.filter((paper) => readingScore(paper) >= 72).length;
-  el.methodCount.textContent = methodTags.size;
+  const highCount = state.papers.filter((paper) => readingScore(paper) >= 72).length;
+
+  animateCounter(el.paperCount, state.papers.length);
+  animateCounter(el.highCount, highCount);
+  animateCounter(el.methodCount, methodTags.size);
+
   el.latestDate.textContent = latestValidPaper?.published?.slice(0, 10) || "--";
 }
 
