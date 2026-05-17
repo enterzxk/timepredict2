@@ -17,6 +17,7 @@ const state = {
   expertSessionsLoading: false,
   activeExpertSessionId: null,
   agentStatus: "",
+  expertImageAttachments: [],
 };
 
 const el = {
@@ -25,6 +26,7 @@ const el = {
   defaultRange: document.querySelector("#defaultRange"),
   llmStatus: document.querySelector("#llmStatus"),
   searchInput: document.querySelector("#searchInput"),
+  searchClear: document.querySelector("#searchClear"),
   maxResults: document.querySelector("#maxResults"),
   recentDays: document.querySelector("#recentDays"),
   viewTitle: document.querySelector("#viewTitle"),
@@ -46,6 +48,11 @@ const el = {
   highCount: document.querySelector("#highCount"),
   methodCount: document.querySelector("#methodCount"),
   latestDate: document.querySelector("#latestDate"),
+  themeToggle: document.querySelector("#themeToggle"),
+  themeLabel: document.querySelector("#themeLabel"),
+  mobileMenuToggle: document.querySelector("#mobileMenuToggle"),
+  sidebarOverlay: document.querySelector("#sidebarOverlay"),
+  sidebar: document.querySelector(".sidebar"),
 };
 
 const priorityLabel = {
@@ -147,9 +154,40 @@ const discoveryQueries = [
 init();
 
 function init() {
+  initTheme();
   bindEvents();
   loadStatus();
   loadPapers();
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("theme") || "light";
+  document.documentElement.setAttribute("data-theme", saved);
+  updateThemeUI(saved);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  updateThemeUI(next);
+}
+
+function updateThemeUI(theme) {
+  if (el.themeLabel) {
+    el.themeLabel.textContent = theme === "dark" ? "浅色模式" : "深色模式";
+  }
+}
+
+function toggleMobileMenu() {
+  el.sidebar?.classList.toggle("open");
+  el.sidebarOverlay?.classList.toggle("active");
+}
+
+function closeMobileMenu() {
+  el.sidebar?.classList.remove("open");
+  el.sidebarOverlay?.classList.remove("active");
 }
 
 function bindEvents() {
@@ -160,12 +198,31 @@ function bindEvents() {
   el.exportButton.addEventListener("click", exportReport);
   el.expertPaperPanelToggle?.addEventListener("click", toggleExpertPaperPanel);
   el.expertPaperRail?.addEventListener("click", toggleExpertPaperPanel);
+  el.themeToggle?.addEventListener("click", toggleTheme);
+
+  el.mobileMenuToggle?.addEventListener("click", toggleMobileMenu);
+  el.sidebarOverlay?.addEventListener("click", closeMobileMenu);
   el.searchInput.addEventListener("input", debounce(() => {
     state.keyword = el.searchInput.value.trim();
     state.activeView = "library";
     selectNav("library");
     loadPapers();
   }, 280));
+
+  el.searchInput.addEventListener("input", () => {
+    if (el.searchClear) {
+      el.searchClear.hidden = !el.searchInput.value.trim();
+    }
+  });
+
+  el.searchClear?.addEventListener("click", () => {
+    el.searchInput.value = "";
+    state.keyword = "";
+    if (el.searchClear) el.searchClear.hidden = true;
+    state.activeView = "library";
+    selectNav("library");
+    loadPapers();
+  });
 
   document.querySelectorAll("[data-keyword]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -178,7 +235,30 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-nav]").forEach((button) => {
-    button.addEventListener("click", () => openView(button.dataset.nav));
+    button.addEventListener("click", () => {
+      openView(button.dataset.nav);
+      closeMobileMenu();
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "k") {
+      event.preventDefault();
+      el.searchInput.focus();
+      el.searchInput.select();
+    }
+    if (event.key === "Escape") {
+      if (!el.message.hidden) {
+        el.message.hidden = true;
+      }
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      const form = el.paperDetail?.querySelector("[data-expert-form]");
+      if (form && document.activeElement?.closest("[data-expert-form]")) {
+        event.preventDefault();
+        form.dispatchEvent(new Event("submit", { cancelable: true }));
+      }
+    }
   });
 }
 
@@ -191,17 +271,17 @@ async function loadStatus() {
       render();
     }
   } catch (error) {
-    el.databasePath.textContent = "加载失败";
-    el.defaultRange.textContent = "加载失败";
-    el.llmStatus.textContent = "加载失败";
+    if (el.databasePath) el.databasePath.textContent = "加载失败";
+    if (el.defaultRange) el.defaultRange.textContent = "加载失败";
+    if (el.llmStatus) el.llmStatus.textContent = "加载失败";
     showMessage(`状态读取失败：${error.message}`, true);
   }
 }
 
 function renderStatus(status) {
-  el.databasePath.textContent = status.database_path || "未读取到路径";
-  el.defaultRange.textContent = `${status.max_results} 篇 / ${status.recent_days} 天`;
-  el.llmStatus.textContent = status.llm_available ? `已启用 ${status.llm_model}` : "未配置 token";
+  if (el.databasePath) el.databasePath.textContent = status.database_path || "未读取到路径";
+  if (el.defaultRange) el.defaultRange.textContent = `${status.max_results} 篇 / ${status.recent_days} 天`;
+  if (el.llmStatus) el.llmStatus.textContent = status.llm_available ? `已启用 ${status.llm_model}` : "未配置 token";
   el.maxResults.value = status.max_results;
   el.recentDays.value = status.recent_days;
   document.querySelectorAll('input[name="source"]').forEach((input) => {
@@ -211,6 +291,7 @@ function renderStatus(status) {
 
 async function loadPapers() {
   setBusy(true);
+  renderSkeletonList();
   try {
     const limit = clampNumber(el.maxResults.value, 1, 500, 120);
     const data = await getJson(`/api/papers?limit=${limit}&keyword=${encodeURIComponent(state.keyword)}`);
@@ -227,6 +308,17 @@ async function loadPapers() {
   } finally {
     setBusy(false);
   }
+}
+
+function renderSkeletonList() {
+  const rows = Array.from({ length: 6 }, () => `
+    <div class="skeleton-row">
+      <div class="skeleton-line title"></div>
+      <div class="skeleton-line meta"></div>
+      <div class="skeleton-line tags"></div>
+    </div>
+  `).join("");
+  el.paperList.innerHTML = rows;
 }
 
 async function collectPapers() {
@@ -280,12 +372,26 @@ async function exportReport() {
 }
 
 function openView(view) {
+  // 保存当前视图的滚动位置
+  const mainContent = document.querySelector(".main-content");
+  if (mainContent && state.activeView) {
+    state.scrollPositions = state.scrollPositions || {};
+    state.scrollPositions[state.activeView] = mainContent.scrollTop;
+  }
   state.activeView = view;
   selectNav(view);
   render();
   if (view === "expert") {
     loadExpertSessions();
   }
+  // 恢复目标视图的滚动位置
+  requestAnimationFrame(() => {
+    if (mainContent && state.scrollPositions && state.scrollPositions[view] != null) {
+      mainContent.scrollTop = state.scrollPositions[view];
+    } else if (mainContent) {
+      mainContent.scrollTop = 0;
+    }
+  });
 }
 
 function openManualAddPanel() {
@@ -366,6 +472,21 @@ function renderStats() {
   el.latestDate.textContent = latestValidPaper?.published?.slice(0, 10) || "--";
 }
 
+function initStaggerAnimation() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('animate-in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.paper-row').forEach(card => {
+    observer.observe(card);
+  });
+}
+
 function renderList() {
   if (!state.papers.length) {
     el.paperList.innerHTML = `
@@ -403,6 +524,7 @@ function renderList() {
   el.paperList.querySelectorAll("[data-batch]").forEach((button) => {
     button.addEventListener("click", () => runBatchAction(button.dataset.batch));
   });
+  initStaggerAnimation();
 }
 
 function renderPaperRow(paper) {
@@ -1309,8 +1431,13 @@ function renderExpertPanel() {
             <form class="expert-askbar" data-expert-form>
               <button class="askbar-icon" data-expert-suggestion="请先用一句话告诉我这篇论文解决了什么问题，然后再展开方法细节。" type="button" title="填入推荐问题">+</button>
               <textarea data-expert-question rows="1" placeholder="有问题，尽管问"></textarea>
+              <label class="askbar-icon image-button" data-expert-image title="添加图片">
+                图
+                <input data-expert-image-input type="file" accept="image/*" multiple hidden />
+              </label>
               <button class="askbar-send" data-expert-submit type="submit" title="发送问题">提问</button>
             </form>
+            ${renderExpertImageAttachments()}
             <div class="expert-quick-actions">
               ${quickQuestions.map((item) => `
                 <button data-expert-suggestion="${escapeAttribute(item.question)}" type="button">${escapeHtml(item.label)}</button>
@@ -1513,6 +1640,7 @@ function normalizeExpertTurn(turn) {
     tool_calls: turn.tool_calls || [],
     reflection: turn.reflection || null,
     memory_used: turn.memory_used || [],
+    image_attachments: turn.image_attachments || turn.imageAttachments || [],
     created_at: turn.created_at || new Date().toISOString(),
   };
 }
@@ -1528,6 +1656,24 @@ function renderAgentRunningStatus() {
     <div class="agent-status running">
       <strong>Agent 正在执行</strong>
       <span>${escapeHtml(state.agentStatus)}</span>
+    </div>
+  `;
+}
+
+function renderExpertImageAttachments() {
+  const images = state.expertImageAttachments || [];
+  if (!images.length) return "";
+  return `
+    <div class="expert-attachment-preview">
+      <div class="expert-attachment-strip">
+        ${images.map((image, index) => `
+          <figure>
+            <img src="${escapeAttribute(image.data_url)}" alt="${escapeAttribute(image.name || `图片 ${index + 1}`)}" />
+            <figcaption>${escapeHtml(image.name || `图片 ${index + 1}`)}</figcaption>
+          </figure>
+        `).join("")}
+      </div>
+      <button data-expert-clear-images type="button">清除图片</button>
     </div>
   `;
 }
@@ -1586,6 +1732,15 @@ function bindExpertChatEvents(paper) {
   el.paperDetail.querySelectorAll("[data-expert-github]").forEach((button) => {
     button.addEventListener("click", () => submitExpertQuestion(paper.arxiv_id, true));
   });
+  el.paperDetail.querySelectorAll("[data-expert-image-input]").forEach((input) => {
+    input.addEventListener("change", () => handleExpertImageInput(input.files));
+  });
+  el.paperDetail.querySelectorAll("[data-expert-clear-images]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.expertImageAttachments = [];
+      render();
+    });
+  });
   el.paperDetail.querySelectorAll("[data-agent-feedback]").forEach((button) => {
     button.addEventListener("click", () => submitAgentFeedback(button));
   });
@@ -1599,6 +1754,7 @@ function renderExpertTurn(turn) {
         <strong>你问：</strong>
         <p>${escapeHtml(turn.question)}</p>
       </div>
+      ${renderExpertTurnImages(turn.image_attachments || [])}
       ${renderAgentStatusSummary(turn)}
       <div class="expert-answer">
         <strong>专家回答${turn.used_llm ? "（LLM）" : "（本地兜底）"}：</strong>
@@ -1619,6 +1775,19 @@ function renderExpertTurn(turn) {
       ` : ""}
       ${renderAgentFeedback(turn)}
     </article>
+  `;
+}
+
+function renderExpertTurnImages(images = []) {
+  if (!images.length) return "";
+  return `
+    <div class="expert-turn-images">
+      ${images.map((image, index) => `
+        <a href="${escapeAttribute(image.data_url)}" target="_blank" rel="noopener" title="${escapeAttribute(image.name || `图片 ${index + 1}`)}">
+          <img src="${escapeAttribute(image.data_url)}" alt="${escapeAttribute(image.name || `图片 ${index + 1}`)}" />
+        </a>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -1684,6 +1853,49 @@ function agentStatusLabel(status) {
   return labels[status] || status || "完成";
 }
 
+async function handleExpertImageInput(fileList) {
+  const files = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+  if (!files.length) {
+    showMessage("请选择图片文件。", true);
+    return;
+  }
+  const availableSlots = Math.max(0, 4 - state.expertImageAttachments.length);
+  if (!availableSlots) {
+    showMessage("一次最多附加 4 张图片。", true);
+    return;
+  }
+  try {
+    const attachments = [];
+    for (const file of files.slice(0, availableSlots)) {
+      if (file.size > 1_800_000) {
+        showMessage(`图片 ${file.name} 超过 1.8MB，已跳过。`, true);
+        continue;
+      }
+      attachments.push(await readImageAttachment(file));
+    }
+    state.expertImageAttachments = [...state.expertImageAttachments, ...attachments];
+    render();
+  } catch (error) {
+    showMessage(`图片读取失败：${error.message}`, true);
+  }
+}
+
+function readImageAttachment(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve({
+        name: file.name,
+        mime_type: file.type,
+        size: file.size,
+        data_url: String(reader.result || ""),
+      });
+    });
+    reader.addEventListener("error", () => reject(reader.error || new Error("FileReader failed")));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function submitAgentFeedback(button) {
   const category = button.dataset.agentFeedback || "";
   const rating = category === "helpful" ? "good" : "bad";
@@ -1708,8 +1920,12 @@ async function submitExpertQuestion(paperId, includeGithub) {
   if (!paper) return;
   const textarea = el.paperDetail.querySelector("[data-expert-question]");
   let question = (textarea?.value || "").trim();
+  const imageAttachments = state.expertImageAttachments.slice();
   if (!question && includeGithub) {
     question = "请帮我找这篇论文相关的 GitHub 代码或复现仓库，并说明这些代码可以参考什么。";
+  }
+  if (!question && imageAttachments.length) {
+    question = "请结合我上传的图片和当前论文内容进行解释。";
   }
   if (!question) {
     showMessage("先输入你想问论文专家的问题。", true);
@@ -1717,38 +1933,115 @@ async function submitExpertQuestion(paperId, includeGithub) {
   }
 
   setBusy(true);
-  state.agentStatus = includeGithub ? "规划中 · 读取论文 · 检索代码 · 反思回答" : "规划中 · 读取论文 · 反思回答";
+  state.agentStatus = "连接中…";
   render();
   showMessage(includeGithub ? "论文专家正在结合 GitHub 检索回答。" : "论文专家正在阅读站内信息并回答。");
+
   try {
     const session = await ensureExpertSession(paper);
-    const data = await postJson(`/api/papers/${encodeURIComponent(paperId)}/expert-chat`, {
+    const payload = {
       question,
       include_github: includeGithub,
       github_limit: 5,
       session_id: session.id,
       history: expertHistoryForPayload(paper),
-    });
+      image_attachments: imageAttachments,
+    };
+
+    let response;
+    try {
+      response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/expert-chat-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      throw new Error(`请求被中断：${err.message}`);
+    }
+
+    if (!response.ok) {
+      let msg = `服务返回错误 (${response.status})`;
+      try {
+        const errData = await response.json();
+        msg = errData.error || msg;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let finalData = null;
+    let streamError = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      let eventType = "";
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith("data: ")) {
+          const raw = line.slice(6);
+          try {
+            const data = JSON.parse(raw);
+            if (eventType === "status") {
+              state.agentStatus = data.message || "处理中…";
+              render();
+            } else if (eventType === "step") {
+              state.agentStatus = data.message || data.step || "执行中…";
+              render();
+            } else if (eventType === "tool") {
+              state.agentStatus = `工具调用 · ${data.tool || data.message || "…"}`;
+              render();
+            } else if (eventType === "answer") {
+              finalData = data;
+            } else if (eventType === "complete") {
+              finalData = finalData || data;
+            } else if (eventType === "error") {
+              streamError = data.error || data.message || "未知错误";
+            }
+          } catch {}
+          eventType = "";
+        }
+      }
+    }
+
+    if (streamError) {
+      throw new Error(streamError);
+    }
+
+    if (!finalData) {
+      throw new Error("未收到回答数据。");
+    }
+
     updateExpertSessionAfterAnswer(paper, {
-      id: data.turn_id,
-      session_id: data.session_id,
-      paper_id: data.paper_id,
+      id: finalData.turn_id,
+      session_id: finalData.session_id,
+      paper_id: finalData.paper_id,
       question,
-      answer: data.answer,
-      used_llm: data.used_llm,
-      llm_error: data.llm_error,
-      github_error: data.github_error,
-      github_repositories: data.github_repositories || [],
-      plan: data.plan || [],
-      tool_calls: data.tool_calls || [],
-      reflection: data.reflection || null,
-      memory_used: data.memory_used || [],
+      answer: finalData.answer,
+      used_llm: finalData.used_llm,
+      llm_error: finalData.llm_error,
+      github_error: finalData.github_error,
+      github_repositories: finalData.github_repositories || [],
+      plan: finalData.plan || [],
+      tool_calls: finalData.tool_calls || [],
+      reflection: finalData.reflection || null,
+      memory_used: finalData.memory_used || [],
+      image_attachments: finalData.image_attachments || imageAttachments,
     });
+    state.expertImageAttachments = [];
     state.agentStatus = "";
     render();
     loadExpertSessions();
     scrollToDetailTarget("expertChatPanel");
-    showMessage(data.used_llm ? "论文专家已用 LLM 回答。" : "论文专家已用本地结构化信息回答。");
+    showMessage(finalData.used_llm ? "论文专家已用 LLM 回答。" : "论文专家已用本地结构化信息回答。");
   } catch (error) {
     state.agentStatus = "";
     render();
@@ -2262,9 +2555,53 @@ async function parseResponse(response) {
 }
 
 function showMessage(text, isError = false) {
+  if (showMessage._timer) {
+    window.clearTimeout(showMessage._timer);
+    showMessage._timer = null;
+  }
   el.message.hidden = false;
   el.message.textContent = text;
-  el.message.classList.toggle("error", isError);
+  el.message.classList.remove("error", "fading");
+  void el.message.offsetWidth; // force reflow to restart animation
+  if (isError) {
+    el.message.classList.add("error");
+  } else {
+    showMessage._timer = window.setTimeout(() => {
+      el.message.classList.add("fading");
+      showMessage._timer = window.setTimeout(() => {
+        el.message.hidden = true;
+        el.message.classList.remove("fading");
+      }, 400);
+    }, 3000);
+  }
+}
+
+function confirmDialog(title, message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "confirm-dialog";
+    dialog.innerHTML = `
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(message)}</p>
+      <div class="confirm-actions">
+        <button class="confirm-cancel">取消</button>
+        <button class="confirm-ok">确认</button>
+      </div>
+    `;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add("visible"));
+    const cleanup = (result) => {
+      overlay.classList.remove("visible");
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    };
+    dialog.querySelector(".confirm-cancel").onclick = () => cleanup(false);
+    dialog.querySelector(".confirm-ok").onclick = () => cleanup(true);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+  });
 }
 
 function setBusy(isBusy) {
@@ -2304,3 +2641,5 @@ function escapeHtml(value) {
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
 }
+
+document.addEventListener('DOMContentLoaded', initStaggerAnimation);
