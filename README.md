@@ -39,17 +39,20 @@
 
 - 多源论文收集：arXiv、Semantic Scholar、OpenAlex、IEEE Xplore 公开检索/官方 API、Google Scholar HTML 导入
 - 过滤最近 N 天内的论文，默认近 1095 天
-- 将论文元数据、摘要和阅读优先级保存到 SQLite
+- 将论文元数据、摘要和阅读优先级保存到 SQLite 或 MySQL，双后端自动切换
 - 使用本地抽取式摘要器生成论文速览，无需 API key
 - 支持列表查看、关键词搜索、单篇详情和 Markdown 报告导出
 - 支持勾选多篇论文生成中文文献综述草稿
-- 论文全文 PDF 下载
+- 论文全文 PDF 下载与文本提取
 - Semantic Scholar 引用/参考文献分析
 - Semantic Scholar 或本地标签相似论文推荐
 - 自动论文分类标签，包括方法标签、主题标签、来源标签和 CCF 会议等级标签
 - 增强流程挖掘方向：Predictive process monitoring、Remaining time prediction、Process mining、Incremental event log
 - **GitHub 代码仓库搜索**：根据论文内容自动搜索相关代码仓库（支持按关键词、方法名匹配）
 - **每日推荐**：基于阅读历史和偏好生成每日论文推荐列表
+- **创新方向建议**：分析目标论文与关联论文，生成 5 个潜在创新方向及证据链
+- **论文生成**：基于模板论文结构分析，LLM 按章节骨架生成新领域论文内容
+- **多模态图片附件**：专家对话支持上传图片，结合图表进行多模态问答
 - **用户反馈系统**：支持点赞/点踩，帮助 Agent 改进
 - 定时任务循环更新论文库
 
@@ -133,11 +136,14 @@ Web 界面支持：
 - 补充引用关系和相似论文推荐
 - **GitHub 代码搜索**：为论文查找相关代码实现，支持一键跳转
 - **每日推荐**：查看个性化论文推荐，按相关性排序
-- **论文专家对话**：支持多轮对话，自动规划任务，自我反思改进
+- **创新建议**：为单篇论文生成 5 个创新方向，含证据链追溯
+- **论文专家对话**：支持多轮对话、流式 SSE 输出、自动规划任务、自我反思改进
+- **图片附件**：对话中上传图片，AI 结合图表内容进行多模态分析
 - **历史对话面板**：左侧显示历史会话，支持切换和继续对话
 - **论文面板折叠**：可折叠论文列表，聊天区域更宽敞
 - **Agent 状态显示**：实时显示 Agent 执行进度和使用的工具
 - **用户反馈系统**：支持点赞/点踩 + 分类备注，帮助 Agent 改进
+- **论文生成**：选择模板论文，输入研究方向自动生成新论文草稿
 - 导出 Markdown 阅读报告
 - 勾选多篇论文后生成中文综述草稿，并保存到 `reports/literature_review.md`
 
@@ -216,12 +222,28 @@ python -m timepredict_agent schedule --interval-minutes 1440
 ```toml
 [agent]
 database_path = "data/papers.sqlite3"
+database_backend = "sqlite"
+database_url = ""
 report_dir = "reports"
 pdf_dir = "data/pdfs"
 max_results = 80
 recent_days = 1095
 sources = ["arxiv", "semantic_scholar", "openalex", "ieee_xplore"]
 query = '(((all:time AND all:series) AND (all:forecasting OR all:prediction OR all:forecast)) OR (all:predictive AND all:process AND all:monitoring) OR (all:remaining AND all:time AND all:prediction) OR (all:process AND all:mining) OR (all:incremental AND all:event AND all:log)) AND (cat:cs.LG OR cat:stat.ML OR cat:cs.AI OR cat:cs.DB OR cat:cs.SE)'
+```
+
+使用 MySQL 后端：
+
+```powershell
+$env:TIMEPREDICT_DATABASE_URL="mysql://user:password@127.0.0.1:3306/timepredict"
+```
+
+或直接在 `timepredict-agent.toml` 中配置 `database_backend = "mysql"` 和 `database_url`。
+
+SQLite → MySQL 数据迁移：
+
+```powershell
+python -m timepredict_agent migrate --target mysql://user:password@127.0.0.1:3306/timepredict
 ```
 
 打印配置模板：
@@ -237,18 +259,19 @@ timepredict_agent/
   agent.py          # Agent 核心逻辑（规划、记忆、反思、多 Agent 协作）
   arxiv_client.py   # arXiv API 客户端
   cli.py            # 命令行入口
-  config.py         # TOML 配置
+  config.py         # TOML 配置（SQLite/MySQL 双后端）
   models.py         # 数据模型
-  storage.py        # SQLite 存储（含 Agent 相关表）
-  summarizer.py     # 本地摘要器
+  storage.py        # SQLite/MySQL 双后端存储（含 Agent 相关表与迁移工具）
+  summarizer.py     # 本地抽取式摘要器
+  llm_summary.py    # LLM 客户端（Anthropic/OpenAI 双格式适配）
   sources.py        # 多源采集器
   citation.py       # 引用分析和相似推荐
-  fulltext.py       # PDF 下载
-  tagger.py         # 论文分类标签
+  fulltext.py       # PDF 下载与文本提取
+  tagger.py         # 论文分类标签（25 专题 + CCF 等级）
   scheduler.py      # 定时更新
   github_search.py  # GitHub 代码仓库搜索
-  web.py            # 本地 Web 服务（含 Agent API）
-  static/           # 可视化操作台（含历史对话面板）
+  web.py            # 本地 Web 服务（REST API + SSE 流式响应）
+  static/           # 可视化操作台（SPA）
 ```
 
 ## 数据库表结构
@@ -289,25 +312,12 @@ agent_task_runs     # 任务执行记录
 
 ## 后续可扩展方向
 
-- 语义记忆检索（当前基于关键词匹配）
-- 动态规划调整（根据执行结果调整计划）
-- LLM 驱动的深度反思
-- 从用户反馈中学习
-- 主动追问机制
-- 增加论文阅读状态、收藏、已读/待读工作流
-- 增加更细的方向分类，例如 foundation model、probabilistic、process mining、anomaly detection
-- 增加批量 LLM 综述和跨论文对比报告
-- 支持更多代码托管平台（GitLab、Bitbucket）
+- 语义记忆检索（当前基于关键词/标签匹配）
+- 动态规划调整（根据执行结果实时调整后续计划）
+- 从用户反馈中自动学习偏好
+- 主动追问机制（答案不完整时主动向用户澄清）
+- 论文阅读状态管理（收藏、已读/待读工作流）
+- 跨论文对比报告（多篇论文方法、实验横向对比）
+- 支持更多代码平台（GitLab、Bitbucket、Hugging Face）
+- Docker 一键部署
 
-## 本地密钥文件
-
-项目启动时会自动读取根目录的 `.env` 或 `.env.local`。可以参考 `.env.example` 创建本地密钥文件：
-
-```text
-ANTHROPIC_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic
-ANTHROPIC_MODEL=mimo-v2.5-pro
-ANTHROPIC_AUTH_TOKEN=你的新token
-TIMEPREDICT_LLM_MAX_TOKENS=1800
-```
-
-`.env` 和 `.env.local` 已加入 `.gitignore`，不会作为代码文件提交。真实 token 不要写进 Python/JavaScript 源码。
