@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import ast
+import os
 
 try:
     import tomllib
@@ -23,6 +24,8 @@ DEFAULT_QUERY = (
 @dataclass(frozen=True)
 class AgentConfig:
     database_path: Path = Path("data/papers.sqlite3")
+    database_backend: str = "sqlite"
+    database_url: str = ""
     report_dir: Path = Path("reports")
     pdf_dir: Path = Path("data/pdfs")
     query: str = DEFAULT_QUERY
@@ -68,8 +71,14 @@ def load_config(path: str | Path | None = None) -> AgentConfig:
     text = Path(path).read_text(encoding="utf-8")
     raw = tomllib.loads(text) if tomllib else _parse_simple_toml(text)
     agent = raw.get("agent", {})
+    database_url = os.environ.get("TIMEPREDICT_DATABASE_URL", str(agent.get("database_url", "")))
+    database_backend = str(
+        agent.get("database_backend") or ("mysql" if database_url.startswith("mysql") else "sqlite")
+    )
     return AgentConfig(
         database_path=Path(agent.get("database_path", "data/papers.sqlite3")),
+        database_backend=database_backend,
+        database_url=database_url,
         report_dir=Path(agent.get("report_dir", "reports")),
         pdf_dir=Path(agent.get("pdf_dir", "data/pdfs")),
         query=agent.get("query", DEFAULT_QUERY),

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 import json
 import sqlite3
 import uuid
@@ -9,13 +11,86 @@ import uuid
 from .models import Paper, PaperSummary
 
 
+TABLE_COPY_ORDER = [
+    "papers",
+    "agent_sessions",
+    "agent_turns",
+    "agent_memory",
+    "agent_feedback",
+    "agent_task_runs",
+]
+
+
+class MySQLConnectionAdapter:
+    def __init__(self, database_url: str) -> None:
+        if not database_url:
+            raise ValueError("MySQL database_url is required.")
+        try:
+            import pymysql
+            from pymysql.cursors import DictCursor
+        except ModuleNotFoundError as exc:  # pragma: no cover - depends on optional dependency
+            raise RuntimeError(
+                "MySQL 后端需要安装 PyMySQL：pip install pymysql，或安装项目的 mysql 可选依赖。"
+            ) from exc
+
+        parsed = urlparse(database_url)
+        if parsed.scheme not in {"mysql", "mysql+pymysql"}:
+            raise ValueError("database_url must start with mysql:// or mysql+pymysql://")
+        database = parsed.path.lstrip("/")
+        if not database:
+            raise ValueError("database_url must include a database name.")
+        query = parse_qs(parsed.query)
+        charset = query.get("charset", ["utf8mb4"])[0]
+        self.raw = pymysql.connect(
+            host=parsed.hostname or "127.0.0.1",
+            port=parsed.port or 3306,
+            user=unquote(parsed.username or ""),
+            password=unquote(parsed.password or ""),
+            database=database,
+            charset=charset,
+            cursorclass=DictCursor,
+            autocommit=False,
+        )
+        self.total_changes = 0
+
+    def execute(self, sql: str, params: tuple | list = ()):
+        cursor = self.raw.cursor()
+        translated = sql.replace("?", "%s")
+        cursor.execute(translated, params)
+        if translated.lstrip().split(maxsplit=1)[0].upper() in {"INSERT", "UPDATE", "DELETE", "REPLACE"}:
+            self.total_changes += max(cursor.rowcount, 0)
+        return cursor
+
+    def commit(self) -> None:
+        self.raw.commit()
+
+    def close(self) -> None:
+        self.raw.close()
+
+
 class PaperStore:
-    def __init__(self, database_path: Path) -> None:
-        self.database_path = database_path
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.database_path)
-        self.connection.row_factory = sqlite3.Row
-        self._init_schema()
+    def __init__(
+        self,
+        database_path: Path | None = None,
+        *,
+        database_backend: str = "sqlite",
+        database_url: str = "",
+    ) -> None:
+        self.database_backend = database_backend
+        self.database_url = database_url
+        self.database_path = database_path or Path("data/papers.sqlite3")
+        if self.database_backend == "mysql":
+            self.connection = MySQLConnectionAdapter(database_url)
+            self._init_mysql_schema()
+        else:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+            self.connection = sqlite3.connect(self.database_path)
+            self.connection.row_factory = sqlite3.Row
+            self._init_schema()
+
+    @classmethod
+    def from_mysql(cls, database_url: str) -> "PaperStore":
+        return cls(database_backend="mysql", database_url=database_url)
 
     def close(self) -> None:
         self.connection.close()
@@ -23,35 +98,7 @@ class PaperStore:
     def upsert_paper(self, paper: Paper, summary: PaperSummary) -> bool:
         before = self.connection.total_changes
         self.connection.execute(
-            """
-            INSERT INTO papers (
-                arxiv_id, title, abstract, authors_json, published, updated,
-                entry_url, pdf_url, categories_json, summary_json, source, source_id,
-                doi, venue, year, citation_count, reference_count, external_ids_json,
-                fields_of_study_json, tags_json
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(arxiv_id) DO UPDATE SET
-                title = excluded.title,
-                abstract = excluded.abstract,
-                authors_json = excluded.authors_json,
-                published = excluded.published,
-                updated = excluded.updated,
-                entry_url = excluded.entry_url,
-                pdf_url = excluded.pdf_url,
-                categories_json = excluded.categories_json,
-                summary_json = excluded.summary_json,
-                source = excluded.source,
-                source_id = excluded.source_id,
-                doi = excluded.doi,
-                venue = excluded.venue,
-                year = excluded.year,
-                citation_count = COALESCE(excluded.citation_count, citation_count),
-                reference_count = COALESCE(excluded.reference_count, reference_count),
-                external_ids_json = excluded.external_ids_json,
-                fields_of_study_json = excluded.fields_of_study_json,
-                tags_json = excluded.tags_json
-            """,
+            self._upsert_paper_sql(),
             (
                 paper.arxiv_id,
                 paper.title,
@@ -73,6 +120,11 @@ class PaperStore:
                 json.dumps(paper.external_ids, ensure_ascii=False),
                 json.dumps(paper.fields_of_study, ensure_ascii=False),
                 json.dumps(_merge_tags(summary.method_tags, summary.topic_tags), ensure_ascii=False),
+                "",
+                "[]",
+                "[]",
+                "[]",
+                "",
             ),
         )
         self.connection.commit()
@@ -277,16 +329,19 @@ class PaperStore:
         tool_calls: list[dict],
         reflection: dict,
         memory_used: list[dict],
+        image_attachments: list[dict] | None = None,
     ) -> dict:
         now = _now_iso()
         turn_id = _new_id("turn")
+        attachments = image_attachments or []
         self.connection.execute(
             """
             INSERT INTO agent_turns (
                 id, session_id, paper_id, question, answer, plan_json,
-                tool_calls_json, reflection_json, memory_used_json, created_at
+                tool_calls_json, reflection_json, memory_used_json,
+                image_attachments_json, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 turn_id,
@@ -298,6 +353,7 @@ class PaperStore:
                 _json_dumps(tool_calls),
                 _json_dumps(reflection),
                 _json_dumps(memory_used),
+                _json_dumps(attachments),
                 now,
             ),
         )
@@ -316,6 +372,7 @@ class PaperStore:
             "tool_calls": tool_calls,
             "reflection": reflection,
             "memory_used": memory_used,
+            "image_attachments": attachments,
             "created_at": now,
         }
 
@@ -429,20 +486,13 @@ class PaperStore:
         now = _now_iso()
         memory_id = _new_id("memory")
         self.connection.execute(
-            """
-            INSERT INTO agent_memory (id, kind, key, value_json, weight, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(kind, key) DO UPDATE SET
-                value_json = excluded.value_json,
-                weight = agent_memory.weight + excluded.weight,
-                updated_at = excluded.updated_at
-            """,
+            self._upsert_agent_memory_sql(),
             (memory_id, kind, key, _json_dumps(value), weight_delta, now, now),
         )
         if commit:
             self.connection.commit()
         cursor = self.connection.execute(
-            "SELECT * FROM agent_memory WHERE kind = ? AND key = ?",
+            "SELECT * FROM agent_memory WHERE kind = ? AND `key` = ?",
             (kind, key),
         )
         row = cursor.fetchone()
@@ -501,6 +551,7 @@ class PaperStore:
             "tool_calls": _json_loads(row["tool_calls_json"], []),
             "reflection": _json_loads(row["reflection_json"], {}),
             "memory_used": _json_loads(row["memory_used_json"], []),
+            "image_attachments": _json_loads(row["image_attachments_json"], []),
             "created_at": row["created_at"],
         }
 
@@ -514,6 +565,233 @@ class PaperStore:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+
+    def export_rows(self, table: str) -> list[dict]:
+        _ensure_known_table(table)
+        cursor = self.connection.execute(f"SELECT * FROM {table}")
+        return [_row_to_plain_dict(row) for row in cursor.fetchall()]
+
+    def replace_rows(self, table: str, rows: list[dict]) -> None:
+        _ensure_known_table(table)
+        if not rows:
+            return
+        columns = list(rows[0].keys())
+        quoted_columns = ", ".join(self._quote_identifier(column) for column in columns)
+        placeholders = ", ".join("?" for _ in columns)
+        if self.database_backend == "mysql":
+            update_columns = [column for column in columns if column != "id" and not (table == "papers" and column == "arxiv_id")]
+            updates = ", ".join(
+                f"{self._quote_identifier(column)} = VALUES({self._quote_identifier(column)})"
+                for column in update_columns
+            )
+            sql = (
+                f"INSERT INTO {self._quote_identifier(table)} ({quoted_columns}) "
+                f"VALUES ({placeholders}) ON DUPLICATE KEY UPDATE {updates}"
+            )
+        else:
+            sql = f"INSERT OR REPLACE INTO {self._quote_identifier(table)} ({quoted_columns}) VALUES ({placeholders})"
+        for row in rows:
+            self.connection.execute(sql, tuple(row.get(column) for column in columns))
+        self.connection.commit()
+
+    def _quote_identifier(self, value: str) -> str:
+        escaped = value.replace("`", "``").replace('"', '""')
+        if self.database_backend == "mysql":
+            return f"`{escaped}`"
+        return f'"{escaped}"'
+
+    def _upsert_paper_sql(self) -> str:
+        if self.database_backend == "mysql":
+            return """
+            INSERT INTO papers (
+                arxiv_id, title, abstract, authors_json, published, updated,
+                entry_url, pdf_url, categories_json, summary_json, source, source_id,
+                doi, venue, year, citation_count, reference_count, external_ids_json,
+                fields_of_study_json, tags_json, local_pdf_path, citations_json,
+                references_json, related_json, pdf_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                title = VALUES(title),
+                abstract = VALUES(abstract),
+                authors_json = VALUES(authors_json),
+                published = VALUES(published),
+                updated = VALUES(updated),
+                entry_url = VALUES(entry_url),
+                pdf_url = VALUES(pdf_url),
+                categories_json = VALUES(categories_json),
+                summary_json = VALUES(summary_json),
+                source = VALUES(source),
+                source_id = VALUES(source_id),
+                doi = VALUES(doi),
+                venue = VALUES(venue),
+                year = VALUES(year),
+                citation_count = COALESCE(VALUES(citation_count), citation_count),
+                reference_count = COALESCE(VALUES(reference_count), reference_count),
+                external_ids_json = VALUES(external_ids_json),
+                fields_of_study_json = VALUES(fields_of_study_json),
+                tags_json = VALUES(tags_json)
+            """
+        return """
+            INSERT INTO papers (
+                arxiv_id, title, abstract, authors_json, published, updated,
+                entry_url, pdf_url, categories_json, summary_json, source, source_id,
+                doi, venue, year, citation_count, reference_count, external_ids_json,
+                fields_of_study_json, tags_json, local_pdf_path, citations_json,
+                references_json, related_json, pdf_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(arxiv_id) DO UPDATE SET
+                title = excluded.title,
+                abstract = excluded.abstract,
+                authors_json = excluded.authors_json,
+                published = excluded.published,
+                updated = excluded.updated,
+                entry_url = excluded.entry_url,
+                pdf_url = excluded.pdf_url,
+                categories_json = excluded.categories_json,
+                summary_json = excluded.summary_json,
+                source = excluded.source,
+                source_id = excluded.source_id,
+                doi = excluded.doi,
+                venue = excluded.venue,
+                year = excluded.year,
+                citation_count = COALESCE(excluded.citation_count, citation_count),
+                reference_count = COALESCE(excluded.reference_count, reference_count),
+                external_ids_json = excluded.external_ids_json,
+                fields_of_study_json = excluded.fields_of_study_json,
+                tags_json = excluded.tags_json
+            """
+
+    def _upsert_agent_memory_sql(self) -> str:
+        if self.database_backend == "mysql":
+            return """
+            INSERT INTO agent_memory (id, kind, `key`, value_json, weight, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                value_json = VALUES(value_json),
+                weight = agent_memory.weight + VALUES(weight),
+                updated_at = VALUES(updated_at)
+            """
+        return """
+            INSERT INTO agent_memory (id, kind, `key`, value_json, weight, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(kind, `key`) DO UPDATE SET
+                value_json = excluded.value_json,
+                weight = agent_memory.weight + excluded.weight,
+                updated_at = excluded.updated_at
+            """
+
+    def _init_mysql_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS papers (
+                arxiv_id VARCHAR(255) PRIMARY KEY,
+                title TEXT NOT NULL,
+                abstract LONGTEXT NOT NULL,
+                authors_json LONGTEXT NOT NULL,
+                published VARCHAR(64) NOT NULL,
+                updated VARCHAR(64) NOT NULL,
+                entry_url TEXT NOT NULL,
+                pdf_url TEXT NOT NULL,
+                categories_json LONGTEXT NOT NULL,
+                summary_json LONGTEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                source VARCHAR(64) NOT NULL DEFAULT 'arxiv',
+                source_id VARCHAR(255) NOT NULL DEFAULT '',
+                doi VARCHAR(255) NOT NULL DEFAULT '',
+                venue TEXT,
+                year INTEGER,
+                citation_count INTEGER,
+                reference_count INTEGER,
+                influential_citation_count INTEGER,
+                external_ids_json LONGTEXT NOT NULL,
+                fields_of_study_json LONGTEXT NOT NULL,
+                tags_json LONGTEXT NOT NULL,
+                local_pdf_path TEXT,
+                citations_json LONGTEXT NOT NULL,
+                references_json LONGTEXT NOT NULL,
+                related_json LONGTEXT NOT NULL,
+                pdf_text LONGTEXT NOT NULL,
+                KEY idx_papers_published (published),
+                KEY idx_papers_source (source)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_sessions (
+                id VARCHAR(255) PRIMARY KEY,
+                paper_id VARCHAR(255) NOT NULL,
+                title TEXT NOT NULL,
+                created_at VARCHAR(64) NOT NULL,
+                updated_at VARCHAR(64) NOT NULL,
+                KEY idx_agent_sessions_updated (updated_at),
+                KEY idx_agent_sessions_paper (paper_id, updated_at)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_turns (
+                id VARCHAR(255) PRIMARY KEY,
+                session_id VARCHAR(255) NOT NULL,
+                paper_id VARCHAR(255) NOT NULL,
+                question LONGTEXT NOT NULL,
+                answer LONGTEXT NOT NULL,
+                plan_json LONGTEXT NOT NULL,
+                tool_calls_json LONGTEXT NOT NULL,
+                reflection_json LONGTEXT NOT NULL,
+                memory_used_json LONGTEXT NOT NULL,
+                image_attachments_json LONGTEXT NOT NULL,
+                created_at VARCHAR(64) NOT NULL,
+                KEY idx_agent_turns_session (session_id, created_at)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_memory (
+                id VARCHAR(255) PRIMARY KEY,
+                kind VARCHAR(80) NOT NULL,
+                `key` VARCHAR(255) NOT NULL,
+                value_json LONGTEXT NOT NULL,
+                weight INTEGER NOT NULL DEFAULT 1,
+                created_at VARCHAR(64) NOT NULL,
+                updated_at VARCHAR(64) NOT NULL,
+                UNIQUE KEY idx_agent_memory_kind_key (kind, `key`)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_feedback (
+                id VARCHAR(255) PRIMARY KEY,
+                turn_id VARCHAR(255) NOT NULL,
+                session_id VARCHAR(255) NOT NULL,
+                rating VARCHAR(40) NOT NULL,
+                category VARCHAR(120) NOT NULL DEFAULT '',
+                note TEXT,
+                created_at VARCHAR(64) NOT NULL
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_task_runs (
+                id VARCHAR(255) PRIMARY KEY,
+                session_id VARCHAR(255) NOT NULL,
+                turn_id VARCHAR(255),
+                paper_id VARCHAR(255) NOT NULL,
+                status VARCHAR(40) NOT NULL,
+                steps_json LONGTEXT NOT NULL,
+                created_at VARCHAR(64) NOT NULL,
+                updated_at VARCHAR(64) NOT NULL,
+                KEY idx_agent_task_runs_session (session_id, updated_at)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+            """
+        )
+        self.connection.commit()
 
     def _init_schema(self) -> None:
         self.connection.execute(
@@ -591,10 +869,19 @@ class PaperStore:
                 tool_calls_json TEXT NOT NULL DEFAULT '[]',
                 reflection_json TEXT NOT NULL DEFAULT '{}',
                 memory_used_json TEXT NOT NULL DEFAULT '[]',
+                image_attachments_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
             )
             """
         )
+        turn_columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(agent_turns)").fetchall()
+        }
+        if "image_attachments_json" not in turn_columns:
+            self.connection.execute(
+                "ALTER TABLE agent_turns ADD COLUMN image_attachments_json TEXT NOT NULL DEFAULT '[]'"
+            )
         self.connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_agent_turns_session ON agent_turns(session_id, created_at)"
         )
@@ -647,6 +934,35 @@ class PaperStore:
         self.connection.commit()
 
 
+def create_paper_store(config) -> PaperStore:
+    backend = str(getattr(config, "database_backend", "sqlite") or "sqlite").lower()
+    database_url = str(getattr(config, "database_url", "") or "")
+    if backend == "mysql":
+        if not database_url:
+            raise ValueError("MySQL backend requires database_url or TIMEPREDICT_DATABASE_URL.")
+        return PaperStore.from_mysql(database_url)
+    return PaperStore(Path(getattr(config, "database_path", "data/papers.sqlite3")))
+
+
+def migrate_sqlite_to_mysql(
+    sqlite_path: str | Path,
+    mysql_url: str,
+    target_store: PaperStore | None = None,
+) -> dict:
+    source = PaperStore(Path(sqlite_path))
+    destination = target_store or PaperStore.from_mysql(mysql_url)
+    counts: dict[str, int] = {}
+    try:
+        for table in TABLE_COPY_ORDER:
+            rows = source.export_rows(table)
+            destination.replace_rows(table, rows)
+            counts[table] = len(rows)
+    finally:
+        source.close()
+        destination.close()
+    return {"backend": "mysql", "tables": counts}
+
+
 def decode_summary(row: sqlite3.Row) -> PaperSummary:
     raw = json.loads(row["summary_json"])
     return PaperSummary(**raw)
@@ -680,6 +996,17 @@ def _json_loads(value: str, fallback):
         return json.loads(value or json.dumps(fallback))
     except (TypeError, json.JSONDecodeError):
         return fallback
+
+
+def _ensure_known_table(table: str) -> None:
+    if table not in TABLE_COPY_ORDER:
+        raise ValueError(f"Unknown table for migration: {table}")
+
+
+def _row_to_plain_dict(row: Mapping | sqlite3.Row) -> dict:
+    if isinstance(row, dict):
+        return dict(row)
+    return {key: row[key] for key in row.keys()}
 
 
 def _merge_tags(*groups: list[str]) -> list[str]:

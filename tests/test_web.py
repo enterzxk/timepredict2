@@ -87,6 +87,28 @@ class WebSerializationTest(unittest.TestCase):
         self.assertIn("请至少选择 1 篇论文来生成综述。", app_js)
         self.assertNotIn("请至少选择 2 篇论文来生成综述。", app_js)
 
+    def test_frontend_sidebar_omits_local_status_panel(self):
+        root = Path(__file__).resolve().parents[1]
+        app_js = (root / "timepredict_agent" / "static" / "app.js").read_text(encoding="utf-8")
+        index_html = (root / "timepredict_agent" / "static" / "index.html").read_text(encoding="utf-8")
+
+        for removed_contract in [
+            'id="databasePath"',
+            'id="defaultRange"',
+            'id="llmStatus"',
+            'class="status-list"',
+        ]:
+            with self.subTest(removed_contract=removed_contract):
+                self.assertNotIn(removed_contract, index_html)
+
+        for contract in [
+            "if (el.databasePath)",
+            "if (el.defaultRange)",
+            "if (el.llmStatus)",
+        ]:
+            with self.subTest(contract=contract):
+                self.assertIn(contract, app_js)
+
     def test_frontend_expert_chat_contract(self):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "timepredict_agent" / "static" / "app.js").read_text(encoding="utf-8")
@@ -147,9 +169,15 @@ class WebSerializationTest(unittest.TestCase):
             "/api/agent/sessions",
             "/api/agent/feedback",
             "data-agent-feedback",
+            "data-expert-image",
+            "data-expert-image-input",
+            "data-expert-clear-images",
             "agent-status",
             "tool_calls",
             "reflection",
+            "image_attachments",
+            "FileReader",
+            "renderExpertImageAttachments",
             "expertPaperPanelToggle",
             "expertPaperRail",
             "toggleExpertPaperPanel",
@@ -181,6 +209,8 @@ class WebSerializationTest(unittest.TestCase):
             ".expert-history-panel",
             ".expert-chat-stage",
             ".expert-askbar",
+            ".expert-attachment-preview",
+            ".expert-turn-images",
             ".expert-quick-actions",
         ]:
             with self.subTest(contract=contract):
@@ -190,6 +220,7 @@ class WebSerializationTest(unittest.TestCase):
             "_handle_agent_sessions",
             "_handle_agent_feedback",
             "session_id=payload.get(\"session_id\")",
+            "image_attachments=payload.get(\"image_attachments\")",
         ]:
             with self.subTest(contract=contract):
                 self.assertIn(contract, web_py)

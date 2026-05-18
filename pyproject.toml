@@ -7,6 +7,7 @@ dependencies = []
 
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.24"]
+mysql = ["pymysql>=1.1"]
 
 [project.scripts]
 timepredict-agent = "timepredict_agent.cli:main"

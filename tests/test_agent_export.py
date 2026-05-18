@@ -531,6 +531,14 @@ class AgentExportTest(unittest.TestCase):
                     tool_calls=[{"tool": "read_context", "status": "completed"}],
                     reflection={"score": 0.8, "passed": True},
                     memory_used=[{"kind": "preference", "key": "depth"}],
+                    image_attachments=[
+                        {
+                            "name": "figure.png",
+                            "mime_type": "image/png",
+                            "size": 24,
+                            "data_url": "data:image/png;base64,AAAA",
+                        }
+                    ],
                 )
                 feedback = agent.store.add_agent_feedback(
                     turn_id=turn["id"],
@@ -546,8 +554,60 @@ class AgentExportTest(unittest.TestCase):
                 self.assertEqual(sessions[0]["id"], session["id"])
                 self.assertEqual(sessions[0]["turn_count"], 1)
                 self.assertEqual(sessions[0]["turns"][0]["plan"][0]["type"], "read_context")
+                self.assertEqual(sessions[0]["turns"][0]["image_attachments"][0]["name"], "figure.png")
                 self.assertEqual(feedback["category"], "missing_experiments")
                 self.assertEqual(memory[0]["key"], "missing_experiments")
+            finally:
+                agent.close()
+
+    def test_paper_expert_accepts_and_persists_image_attachments(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            agent = PaperAgent(
+                AgentConfig(database_path=root / "papers.sqlite3", report_dir=root / "reports")
+            )
+            agent.llm.token = ""
+            try:
+                paper = Paper(
+                    arxiv_id="image-chat",
+                    title="Figure Understanding Paper",
+                    abstract="A paper with a method figure.",
+                    authors=["A. Researcher"],
+                    published="2025-01-01T00:00:00Z",
+                    updated="2025-01-01T00:00:00Z",
+                    entry_url="https://example.com/image-chat",
+                    pdf_url="",
+                    categories=[],
+                )
+                agent.store.upsert_paper(
+                    paper,
+                    PaperSummary(
+                        short_summary="A paper with a method figure.",
+                        key_points=["Method figure needs explanation."],
+                        method_tags=["Transformer"],
+                        relevance="Relevant.",
+                        reading_priority="high",
+                    ),
+                )
+
+                result = agent.ask_paper_expert(
+                    "image-chat",
+                    "请结合这张图解释方法流程",
+                    prefer_llm=False,
+                    image_attachments=[
+                        {
+                            "name": "method.png",
+                            "mime_type": "image/png",
+                            "size": 32,
+                            "data_url": "data:image/png;base64,AAAA",
+                        }
+                    ],
+                )
+
+                self.assertEqual(result["image_attachments"][0]["name"], "method.png")
+                self.assertIn("已收到 1 张图片", result["answer"])
+                sessions = agent.store.list_agent_sessions()
+                self.assertEqual(sessions[0]["turns"][0]["image_attachments"][0]["mime_type"], "image/png")
             finally:
                 agent.close()
 

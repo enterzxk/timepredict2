@@ -1,5 +1,7 @@
 [agent]
 database_path = "data/papers.sqlite3"
+database_backend = "sqlite"
+database_url = ""
 report_dir = "reports"
 pdf_dir = "data/pdfs"
 max_results = 80
