@@ -88,6 +88,28 @@ class PdfTextExtractor:
         text = re.sub(r"-\n(\w)", r"\1", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]+", " ", text)
+        # 过滤出版社版权声明/免责声明等样板文字
+        boilerplate_patterns = [
+            r"All rights are reserved by the Publisher.*?(?:\.|$)",
+            r"The use of general descriptive names.*?(?:\.|$)",
+            r"The publisher,? the authors and the editors are safe to assume.*?(?:\.|$)",
+            r"specifically the rights of translation.*?(?:\.|$)",
+            r"©\s*\d{4}\s*(?:Springer|Elsevier|IEEE|ACM|Wiley|Taylor|Francis).*?(?:\.|$)",
+            r"This (?:book|volume|publication) is subject to copyright.*?(?:\.|$)",
+            r"registered names, trademarks, service marks.*?(?:\.|$)",
+            r"even in the absence of a specific statement.*?(?:\.|$)",
+            r"therefore free for general use.*?(?:\.|$)",
+            r"now known or hereafter developed.*?(?:\.|$)",
+            r"or by similar or dissimilar methodology.*?(?:\.|$)",
+            r"electronic adaptation, computer software.*?(?:\.|$)",
+            r"reproduction on microfilms.*?(?:\.|$)",
+            r"transmission or information storage and retrieval.*?(?:\.|$)",
+            r"recitation, broadcasting.*?(?:\.|$)",
+            r"reuse of illustrations.*?(?:\.|$)",
+            r"whether the whole or part of the material.*?(?:\.|$)",
+        ]
+        for pattern in boilerplate_patterns:
+            text = re.sub(pattern, "", text, flags=re.I | re.S)
         lines = text.split("\n")
         cleaned_lines = []
         for line in lines:

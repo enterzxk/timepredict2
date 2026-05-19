@@ -19,6 +19,33 @@ ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 8192
 HARD_MAX_TOKENS = 131072
 
+_BOILERPLATE_PATTERNS = [
+    r"All rights are reserved by the Publisher.*?(?:\.|$)",
+    r"The use of general descriptive names.*?(?:\.|$)",
+    r"The publisher,? the authors and the editors are safe to assume.*?(?:\.|$)",
+    r"specifically the rights of translation.*?(?:\.|$)",
+    r"©\s*\d{4}\s*(?:Springer|Elsevier|IEEE|ACM|Wiley|Taylor|Francis).*?(?:\.|$)",
+    r"This (?:book|volume|publication) is subject to copyright.*?(?:\.|$)",
+    r"registered names, trademarks, service marks.*?(?:\.|$)",
+    r"even in the absence of a specific statement.*?(?:\.|$)",
+    r"therefore free for general use.*?(?:\.|$)",
+    r"now known or hereafter developed.*?(?:\.|$)",
+    r"or by similar or dissimilar methodology.*?(?:\.|$)",
+    r"electronic adaptation, computer software.*?(?:\.|$)",
+    r"reproduction on microfilms.*?(?:\.|$)",
+    r"transmission or information storage and retrieval.*?(?:\.|$)",
+    r"recitation, broadcasting.*?(?:\.|$)",
+    r"reuse of illustrations.*?(?:\.|$)",
+    r"whether the whole or part of the material.*?(?:\.|$)",
+]
+
+
+def _filter_boilerplate(text: str) -> str:
+    """过滤出版社版权声明/免责声明等样板文字。"""
+    for pattern in _BOILERPLATE_PATTERNS:
+        text = re.sub(pattern, "", text, flags=re.I | re.S)
+    return text.strip()
+
 
 class AnthropicSummaryClient:
     def __init__(self) -> None:
@@ -37,6 +64,7 @@ class AnthropicSummaryClient:
         if not self.available():
             raise RuntimeError("未检测到 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY。")
 
+        cleaned_pdf_text = _filter_boilerplate(pdf_text) if pdf_text else ""
         payload = {
             "model": self.model,
             "max_tokens": _safe_max_tokens(),
@@ -52,7 +80,7 @@ class AnthropicSummaryClient:
             "messages": [
                 {
                     "role": "user",
-                    "content": _build_prompt(paper, current, pdf_text),
+                    "content": _build_prompt(paper, current, cleaned_pdf_text),
                 }
             ],
         }
@@ -101,11 +129,13 @@ class AnthropicSummaryClient:
         if not self.available():
             raise RuntimeError("未检测到 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY。")
 
+        cleaned_pdf_text = _filter_boilerplate(pdf_text) if pdf_text else ""
         system_prompt = (
             "你是深度学习和人工智能论文导师。请用简体中文回答用户关于单篇论文的问题。"
             "回答要能让用户不翻正文也尽量理解论文：必须解释方法思想、具体流程、创新点、与已有方法对比、实验设计和结果含义。"
             "只根据给定论文信息和 GitHub 仓库信息作答；信息缺失时明确说缺失，不要编造指标、数据集或结论。"
             "不要输出思考过程。"
+            "忽略全文中的出版社版权声明、免责声明（如 'All rights are reserved by the Publisher' 等），这些不是论文内容。"
         )
         if memory:
             memory_notes = []
@@ -127,7 +157,7 @@ class AnthropicSummaryClient:
             "messages": [
                 {
                     "role": "user",
-                    "content": _build_expert_prompt(paper, summary, pdf_text, question, repositories or [], history or [], memory or []),
+                    "content": _build_expert_prompt(paper, summary, cleaned_pdf_text, question, repositories or [], history or [], memory or []),
                 }
             ],
         }
@@ -279,12 +309,13 @@ class AnthropicSummaryClient:
         if not self.available():
             return None
 
+        cleaned_pdf_text = _filter_boilerplate(pdf_text) if pdf_text else ""
         try:
             prompt = f"""请分析以下论文的结构：
 
 标题：{paper_title}
 摘要：{abstract}
-全文（前 10000 字符）：{pdf_text[:10000]}
+全文（前 10000 字符）：{cleaned_pdf_text[:10000]}
 
 请提取：
 1. 章节结构（标题和层级）
@@ -411,6 +442,8 @@ def _build_prompt(paper: Paper, current: PaperSummary, pdf_text: str = "") -> st
 如果论文属于多模态大模型、LLM、强化学习、计算机视觉、NLP、机器人、可供性推理等方向，请按这些方向解释；不要强行写成时间序列预测或业务过程预测论文。
 
 你的目标不是翻译摘要，而是帮助读者理解：论文要解决什么问题、为什么重要、方法怎么做、实验说明了什么、有什么局限、该不该精读。
+
+重要：忽略全文中的出版社版权声明、免责声明（如 "All rights are reserved by the Publisher"、"The use of general descriptive names" 等），这些不是论文内容。只关注论文的实际技术内容。
 
 输出要求：
 1. 最好只返回一个 JSON 对象，不要使用 Markdown 代码块。
