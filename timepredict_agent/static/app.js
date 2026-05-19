@@ -1298,6 +1298,7 @@ function renderDetail() {
       <button data-action="recommend" data-id="${escapeAttribute(paper.arxiv_id)}" type="button">相似推荐</button>
       <button data-action="innovation-advice" data-id="${escapeAttribute(paper.arxiv_id)}" type="button">创新建议</button>
       <button data-expert-open-selected type="button">论文专家</button>
+      <button data-action="delete-paper" data-id="${escapeAttribute(paper.arxiv_id)}" type="button" class="danger-btn">删除</button>
     </div>
     ${state.status?.llm_available ? "" : `<p class="panel-note warning">LLM 未配置，深度解读按钮会保持不可用。请在配置面板检查 .env。</p>`}
     ${renderRecommendationSpotlight(paper)}
@@ -1408,6 +1409,16 @@ async function runPaperAction(action, paperId) {
       }
       render();
       showMessage(`已生成 ${data.advice?.length || 0} 条创新建议。`);
+      return;
+    }
+    if (action === "delete-paper") {
+      if (!confirm("确定要删除这篇论文吗？此操作不可撤销。")) return;
+      const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}`, { method: "DELETE" });
+      const data = await parseResponse(response);
+      state.papers = state.papers.filter((item) => item.arxiv_id !== paperId);
+      state.selectedId = null;
+      render();
+      showMessage(`已删除论文：${data.deleted}`);
     }
   } catch (error) {
     showMessage(error.message, true);

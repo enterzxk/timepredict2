@@ -161,6 +161,16 @@
   border-color: #30363d;
 }
 
+[data-theme="dark"] .detail-actions .danger-btn {
+  color: #f87171;
+  border-color: #7f1d1d;
+  background: #1a0505;
+}
+
+[data-theme="dark"] .detail-actions .danger-btn:hover {
+  background: #2d0a0a;
+}
+
 [data-theme="dark"] .recommendation-spotlight,
 [data-theme="dark"] .expert-chat {
   background: #0d1117;
@@ -1183,6 +1193,17 @@ input:disabled {
 .detail-actions a:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(15, 118, 110, 0.08);
+}
+
+.detail-actions .danger-btn {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.detail-actions .danger-btn:hover {
+  background: #fee2e2;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.12);
 }
 
 .detail-block {

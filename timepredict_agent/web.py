@@ -149,6 +149,25 @@ def _make_handler(config: AgentConfig):
             except Exception as exc:
                 self._send_json({"error": f"服务器处理请求失败：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
+        def do_DELETE(self) -> None:
+            try:
+                parsed = urlparse(self.path)
+                if parsed.path.startswith("/api/papers/"):
+                    paper_id = unquote(parsed.path.rsplit("/", 1)[-1])
+                    agent = PaperAgent(config)
+                    try:
+                        deleted = agent.store.delete_paper(paper_id)
+                        if deleted:
+                            self._send_json({"ok": True, "deleted": paper_id})
+                        else:
+                            self._send_json({"error": "论文不存在"}, HTTPStatus.NOT_FOUND)
+                    finally:
+                        agent.close()
+                    return
+                self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            except Exception as exc:
+                self._send_json({"error": f"服务器处理请求失败：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
         def log_message(self, format: str, *args) -> None:
             return
 

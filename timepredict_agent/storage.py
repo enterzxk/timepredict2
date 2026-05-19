@@ -196,6 +196,11 @@ class PaperStore:
         )
         self.connection.commit()
 
+    def delete_paper(self, paper_id: str) -> bool:
+        cursor = self.connection.execute("DELETE FROM papers WHERE arxiv_id = ?", (paper_id,))
+        self.connection.commit()
+        return cursor.rowcount > 0
+
     def list_papers(self, limit: int = 20) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             "SELECT * FROM papers ORDER BY published DESC LIMIT ?", (limit,)
