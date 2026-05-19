@@ -297,6 +297,10 @@ def _make_handler(config: AgentConfig):
                 )
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except (OSError, RuntimeError) as exc:
+                self._send_json({"error": f"上传处理失败：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            except Exception as exc:
+                self._send_json({"error": f"上传处理异常：{exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
         def _handle_download(self, paper_id: str) -> None:
             agent = PaperAgent(config)
